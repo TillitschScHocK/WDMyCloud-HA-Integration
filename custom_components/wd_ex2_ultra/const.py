@@ -44,7 +44,7 @@ WD_OID_HOSTNAME      = WD_NAS_AGENT + ".3.0"   # mycloudex2ultraHostName
 # WD Disk Table OID column roots (without row index)
 # Table:  nasAgent.10
 # Entry:  nasAgent.10.1
-# Cols:   .1 DiskNum  .2 Vendor  .3 Model  .4 Serial  .5 Temperature  .6 Capacity
+# Cols:   .1 DiskNum  .2 Vendor  .3 Model  .4 Serial  .5 Temperature  .6 Capacity  .7 Status
 WD_DISK_TABLE_ROOT      = WD_NAS_AGENT + ".10"
 WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"  # walk this to find disk indices
 WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
@@ -52,6 +52,15 @@ WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
 WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
 WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
 WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"
+WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"  # DiskStatus: 0=Unknown 1=Good 2=Degraded 3=Failure
+
+# Disk status integer -> human-readable string
+DISK_STATUS_MAP = {
+    "0": "Unknown",
+    "1": "Good",
+    "2": "Degraded",
+    "3": "Failure",
+}
 
 # WD Volume Table OID column roots
 # Table:  nasAgent.9
@@ -60,8 +69,26 @@ WD_VOL_COL_NUM        = WD_NAS_AGENT + ".9.1.1"
 WD_VOL_COL_NAME       = WD_NAS_AGENT + ".9.1.2"
 WD_VOL_COL_FSTYPE     = WD_NAS_AGENT + ".9.1.3"
 WD_VOL_COL_RAIDLEVEL  = WD_NAS_AGENT + ".9.1.4"
-WD_VOL_COL_SIZE       = WD_NAS_AGENT + ".9.1.5"
-WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"
+WD_VOL_COL_SIZE       = WD_NAS_AGENT + ".9.1.5"   # in MB
+WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"   # in MB
+
+# RAID level integer -> human-readable string
+RAID_LEVEL_MAP = {
+    "0": "JBOD",
+    "1": "RAID 0",
+    "2": "RAID 1",
+    "3": "RAID 5",
+    "4": "RAID 10",
+}
+
+# ============================================================
+# Network interface OIDs – using 64-bit High Capacity counters
+# (IF-MIB::ifHCInOctets / ifHCOutOctets) instead of the 32-bit
+# ifInOctets / ifOutOctets which wrap around at ~4 GB.
+# Interface index 2 = eth0 on the WD MyCloud EX2 Ultra.
+# ============================================================
+IF_HC_IN_OCTETS_ETH0  = "1.3.6.1.2.1.31.1.1.1.6.2"   # ifHCInOctets.2
+IF_HC_OUT_OCTETS_ETH0 = "1.3.6.1.2.1.31.1.1.1.10.2"  # ifHCOutOctets.2
 
 # ============================================================
 # Static sensors (scalar OIDs, fetched with get_cmd)
@@ -150,21 +177,23 @@ SENSORS = [
         "state_class": None,
     },
     {
+        # 64-bit counter – replaces old 32-bit ifInOctets (wraps at ~4 GB)
         "key": "network_in",
         "name": "Network In (eth0)",
-        "oid": "1.3.6.1.2.1.2.2.1.10.2",
+        "oid": IF_HC_IN_OCTETS_ETH0,
         "unit": "B",
         "icon": "mdi:download-network",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "total_increasing",
     },
     {
+        # 64-bit counter – replaces old 32-bit ifOutOctets (wraps at ~4 GB)
         "key": "network_out",
         "name": "Network Out (eth0)",
-        "oid": "1.3.6.1.2.1.2.2.1.16.2",
+        "oid": IF_HC_OUT_OCTETS_ETH0,
         "unit": "B",
         "icon": "mdi:upload-network",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "total_increasing",
     },
     {
