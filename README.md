@@ -1,3 +1,6 @@
+> ⚠️ **Attention:** This project is currently under development.  
+> Values are not yet fully or accurately tracked and may be incomplete or incorrect.
+
 # WD MyCloud EX2 Ultra – Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
