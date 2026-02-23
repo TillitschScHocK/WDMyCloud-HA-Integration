@@ -65,6 +65,8 @@ WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"
 
 # ============================================================
 # Static sensors (scalar OIDs, fetched with get_cmd)
+# Sensors with "computed": True are not fetched via SNMP but
+# computed in snmp_helper.fetch_snmp_data from other values.
 # ============================================================
 SENSORS = [
     {
@@ -97,7 +99,7 @@ SENSORS = [
     {
         "key": "ram_total",
         "name": "RAM Total",
-        "oid": "1.3.6.1.4.1.2021.4.5.0",
+        "oid": "1.3.6.1.4.1.2021.4.5.0",   # memTotalReal
         "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
@@ -107,7 +109,10 @@ SENSORS = [
     {
         "key": "ram_free",
         "name": "RAM Free",
-        "oid": "1.3.6.1.4.1.2021.4.11.0",
+        # memAvailReal – actual free physical RAM only.
+        # Previously used memTotalFree (.4.11.0) which includes swap space
+        # and could therefore exceed RAM Total.
+        "oid": "1.3.6.1.4.1.2021.4.6.0",
         "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
@@ -117,12 +122,14 @@ SENSORS = [
     {
         "key": "ram_used",
         "name": "RAM Used",
-        "oid": "1.3.6.1.4.1.2021.4.6.0",
+        # No direct OID for used physical RAM in UCD-SNMP-MIB.
+        # Computed as ram_total - ram_free in snmp_helper.fetch_snmp_data.
+        "oid": None,
+        "computed": True,
         "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
         "state_class": "measurement",
-        "transform": "kb_to_mib",
     },
     {
         "key": "system_temperature",

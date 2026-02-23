@@ -5,6 +5,7 @@ SNMP integration (pysnmp==7.1.22).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
@@ -138,9 +139,11 @@ async def test_snmp_connection(data: dict) -> None:
         host = sanitize_host(data["host"])
         auth_data = _build_auth_data(data)
         target = await UdpTransportTarget.create((host, 161), timeout=5, retries=1)
+        # SnmpEngine() reads MIB files from disk (blocking I/O) – run in executor
+        engine = await asyncio.get_running_loop().run_in_executor(None, SnmpEngine)
 
         error_indication, error_status, error_index, _ = await get_cmd(
-            SnmpEngine(),
+            engine,
             auth_data,
             target,
             ContextData(),
@@ -164,6 +167,8 @@ async def walk_snmp_column(data: dict, column_oid: str) -> dict[str, str]:
     """Walk a single SNMP table column and return {row_index: value} dict.
 
     The row index is extracted as the last OID component after column_oid.
+    Uses an iterative GETNEXT loop because next_cmd() is a coroutine in
+    pysnmp 7.x, not an async generator – 'async for' cannot be used with it.
     """
     try:
         from pysnmp.hlapi.v3arch.asyncio import (
@@ -182,34 +187,45 @@ async def walk_snmp_column(data: dict, column_oid: str) -> dict[str, str]:
     host = sanitize_host(data["host"])
     auth_data = _build_auth_data(data)
     target = await UdpTransportTarget.create((host, 161), timeout=5, retries=1)
-    engine = SnmpEngine()
+    # SnmpEngine() reads MIB files from disk (blocking I/O) – run in executor
+    engine = await asyncio.get_running_loop().run_in_executor(None, SnmpEngine)
     result: dict[str, str] = {}
 
-    # Walk the column using next_cmd
-    async for (error_indication, error_status, error_index, var_binds) in next_cmd(
-        engine,
-        auth_data,
-        target,
-        ContextData(),
-        ObjectType(ObjectIdentity(column_oid)),
-        lexicographicMode=False,
-    ):
-        if error_indication or error_status:
-            _LOGGER.debug("Walk ended for OID %s: %s %s", column_oid, error_indication, error_status)
+    current_oid = column_oid
+
+    while True:
+        try:
+            error_indication, error_status, error_index, var_binds = await next_cmd(
+                engine,
+                auth_data,
+                target,
+                ContextData(),
+                ObjectType(ObjectIdentity(current_oid)),
+            )
+        except Exception as err:
+            _LOGGER.debug("Walk exception for OID %s: %s", current_oid, err)
             break
-        for var_bind in var_binds:
-            oid_str = str(var_bind[0])
-            value_str = str(var_bind[1])
-            # Extract row index = last part of OID after column_oid
-            if oid_str.startswith(column_oid + "."):
-                row_idx = oid_str[len(column_oid) + 1:]
-                result[row_idx] = value_str
-            else:
-                # Walked beyond this column – stop
-                break
-        else:
-            continue
-        break
+
+        if error_indication or error_status:
+            _LOGGER.debug(
+                "Walk ended for OID %s: %s %s", column_oid, error_indication, error_status
+            )
+            break
+
+        if not var_binds:
+            break
+
+        var_bind = var_binds[0]
+        oid_str = str(var_bind[0])
+        value_str = str(var_bind[1])
+
+        # Stop if the returned OID is outside this column
+        if not oid_str.startswith(column_oid + "."):
+            break
+
+        row_idx = oid_str[len(column_oid) + 1:]
+        result[row_idx] = value_str
+        current_oid = oid_str  # advance to next OID for the following GETNEXT
 
     return result
 
@@ -260,6 +276,8 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     """Fetch all scalar sensor OIDs via SNMP. Returns dict keyed by sensor key.
 
     Also fetches the WD disk table and adds disk_<idx>_* keys to the result.
+    Sensors with 'computed: True' are skipped during the SNMP fetch and instead
+    derived from other already-fetched values.
     """
     try:
         from pysnmp.hlapi.v3arch.asyncio import (
@@ -278,10 +296,15 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     host = sanitize_host(data["host"])
     auth_data = _build_auth_data(data)
     target = await UdpTransportTarget.create((host, 161), timeout=5, retries=1)
-    engine = SnmpEngine()
+    # SnmpEngine() reads MIB files from disk (blocking I/O) – run in executor
+    engine = await asyncio.get_running_loop().run_in_executor(None, SnmpEngine)
     result: dict = {}
 
     for sensor in sensors:
+        # Skip computed sensors – their values are derived below
+        if sensor.get("computed"):
+            continue
+
         oid = sensor["oid"]
         key = sensor["key"]
         transform = sensor.get("transform")
@@ -316,6 +339,13 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
             else:
                 parsed = parse_snmp_number(raw_value)
                 result[key] = parsed if parsed is not None else raw_value
+
+    # Compute ram_used = ram_total - ram_free.
+    # UCD-SNMP-MIB has no memUsedReal OID; ram_free maps to memAvailReal.
+    ram_total = result.get("ram_total")
+    ram_free = result.get("ram_free")
+    if ram_total is not None and ram_free is not None:
+        result["ram_used"] = round(ram_total - ram_free, 1)
 
     # Fetch dynamic WD disk table
     try:
