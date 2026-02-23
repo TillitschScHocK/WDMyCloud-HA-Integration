@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.2] – 2026-02-23
+
+### Fixed
+
+- Added `parse_wd_temperature()` function to handle WD's proprietary temperature format `'Centigrade:48 \tFahrenheit:118'` which the NAS returns for disk temperature OIDs. The parser extracts the Celsius value and converts it to a float.
+- Improved `build_auth_data()` to catch `ImportError` immediately and raise `SnmpLibraryMissing`, preventing the error from cascading into `test_snmp_connection()`.
+- Pinned `pysnmp-lextudio` to exact version `6.2.6` in `manifest.json` to ensure consistent behavior across installations.
+- Updated `fetch_snmp_data()` to apply special parsing for any sensor key containing `"temperature"`.
+
+---
+
 ## [1.0.1] – 2026-02-23
 
 ### Fixed

@@ -29,16 +29,43 @@ def sanitize_host(host: str) -> str:
     return host
 
 
+def parse_wd_temperature(raw_value: str) -> float | None:
+    """Parse WD-specific temperature format 'Centigrade:48 \tFahrenheit:118' into float."""
+    if not raw_value or not isinstance(raw_value, str):
+        return None
+    
+    # Try to match 'Centigrade:XX' or 'Fahrenheit:XX' format
+    match_c = re.search(r'Centigrade:\s*(\d+)', raw_value)
+    if match_c:
+        try:
+            return float(match_c.group(1))
+        except (ValueError, AttributeError):
+            pass
+    
+    # Fallback: try to parse as plain number
+    try:
+        return float(raw_value)
+    except (ValueError, TypeError):
+        _LOGGER.warning("Could not parse temperature value: %s", raw_value)
+        return None
+
+
 def build_auth_data(data: dict):
     """Build the correct pysnmp auth data object based on SNMP version."""
-    from pysnmp.hlapi import (
-        CommunityData,
-        UsmUserData,
-        usmHMACMD5AuthProtocol,
-        usmHMACSHAAuthProtocol,
-        usmDESPrivProtocol,
-        usmAesCfb128Protocol,
-    )
+    try:
+        from pysnmp.hlapi import (
+            CommunityData,
+            UsmUserData,
+            usmHMACMD5AuthProtocol,
+            usmHMACSHAAuthProtocol,
+            usmDESPrivProtocol,
+            usmAesCfb128Protocol,
+        )
+    except ImportError as err:
+        raise SnmpLibraryMissing(
+            "pysnmp-lextudio is not installed. Please restart Home Assistant."
+        ) from err
+    
     from .const import (
         CONF_SNMP_VERSION,
         CONF_COMMUNITY,
@@ -159,11 +186,19 @@ def fetch_snmp_data(data: dict, sensors: list) -> dict:
             result[key] = None
         else:
             raw_value = str(var_binds[0][1])
+            
+            # Special handling for system uptime (timeticks)
             if key == "system_uptime":
                 try:
                     result[key] = round(int(raw_value) / 100, 1)
                 except (ValueError, TypeError):
                     result[key] = raw_value
+            
+            # Special handling for WD disk temperatures
+            elif "temperature" in key:
+                result[key] = parse_wd_temperature(raw_value)
+            
+            # All other sensors: try to convert to float
             else:
                 try:
                     result[key] = float(raw_value)
