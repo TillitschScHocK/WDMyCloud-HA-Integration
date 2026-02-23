@@ -233,7 +233,7 @@ async def walk_snmp_column(data: dict, column_oid: str) -> dict[str, str]:
 async def fetch_disk_table(data: dict) -> list[dict]:
     """Fetch WD disk table dynamically. Returns list of disk dicts.
 
-    Each dict has keys: index, vendor, model, serial, temperature, capacity.
+    Each dict has keys: index, vendor, model, serial, temperature, capacity, status.
     """
     from .const import (
         WD_DISK_COL_NUM,
@@ -242,6 +242,8 @@ async def fetch_disk_table(data: dict) -> list[dict]:
         WD_DISK_COL_SERIAL,
         WD_DISK_COL_TEMPERATURE,
         WD_DISK_COL_CAPACITY,
+        WD_DISK_COL_STATUS,
+        DISK_STATUS_MAP,
     )
 
     # First walk the DiskNum column to find which indices exist
@@ -258,24 +260,82 @@ async def fetch_disk_table(data: dict) -> list[dict]:
     serials    = await walk_snmp_column(data, WD_DISK_COL_SERIAL)
     temps      = await walk_snmp_column(data, WD_DISK_COL_TEMPERATURE)
     capacities = await walk_snmp_column(data, WD_DISK_COL_CAPACITY)
+    statuses   = await walk_snmp_column(data, WD_DISK_COL_STATUS)
 
     disks = []
     for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
+        raw_status = statuses.get(idx, "0")
         disks.append({
-            "index": idx,
+            "index":       idx,
             "vendor":      vendors.get(idx, ""),
             "model":       models.get(idx, ""),
             "serial":      serials.get(idx, ""),
             "temperature": parse_wd_temperature(temps.get(idx, "")),
             "capacity":    parse_snmp_number(capacities.get(idx, "")),
+            "status":      DISK_STATUS_MAP.get(raw_status, raw_status),
         })
     return disks
+
+
+async def fetch_volume_table(data: dict) -> list[dict]:
+    """Fetch WD volume/RAID table dynamically. Returns list of volume dicts.
+
+    Each dict has keys: index, name, fstype, raid_level, size_mb, free_mb,
+    used_mb, used_pct.
+    Size and free space are reported in MB by the WD MIB.
+    """
+    from .const import (
+        WD_VOL_COL_NUM,
+        WD_VOL_COL_NAME,
+        WD_VOL_COL_FSTYPE,
+        WD_VOL_COL_RAIDLEVEL,
+        WD_VOL_COL_SIZE,
+        WD_VOL_COL_FREESPACE,
+        RAID_LEVEL_MAP,
+    )
+
+    indices = await walk_snmp_column(data, WD_VOL_COL_NUM)
+    if not indices:
+        _LOGGER.debug("WD volume table: no volumes found via SNMP walk")
+        return []
+
+    _LOGGER.debug("WD volume table indices found: %s", list(indices.keys()))
+
+    names      = await walk_snmp_column(data, WD_VOL_COL_NAME)
+    fstypes    = await walk_snmp_column(data, WD_VOL_COL_FSTYPE)
+    raidlevels = await walk_snmp_column(data, WD_VOL_COL_RAIDLEVEL)
+    sizes      = await walk_snmp_column(data, WD_VOL_COL_SIZE)
+    frees      = await walk_snmp_column(data, WD_VOL_COL_FREESPACE)
+
+    volumes = []
+    for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
+        size_mb = parse_snmp_number(sizes.get(idx, ""))
+        free_mb = parse_snmp_number(frees.get(idx, ""))
+        used_mb = None
+        used_pct = None
+        if size_mb is not None and free_mb is not None:
+            used_mb = round(size_mb - free_mb, 1)
+            if size_mb > 0:
+                used_pct = round((used_mb / size_mb) * 100, 1)
+        raw_raid = raidlevels.get(idx, "")
+        volumes.append({
+            "index":      idx,
+            "name":       names.get(idx, ""),
+            "fstype":     fstypes.get(idx, ""),
+            "raid_level": RAID_LEVEL_MAP.get(raw_raid, raw_raid),
+            "size_mb":    size_mb,
+            "free_mb":    free_mb,
+            "used_mb":    used_mb,
+            "used_pct":   used_pct,
+        })
+    return volumes
 
 
 async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     """Fetch all scalar sensor OIDs via SNMP. Returns dict keyed by sensor key.
 
-    Also fetches the WD disk table and adds disk_<idx>_* keys to the result.
+    Also fetches the WD disk table and volume table and adds their data to
+    the result under '_disks' and '_volumes' keys.
     Sensors with 'computed: True' are skipped during the SNMP fetch and instead
     derived from other already-fetched values.
     """
@@ -354,5 +414,13 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     except Exception as err:
         _LOGGER.warning("Could not fetch WD disk table: %s", err)
         result["_disks"] = []
+
+    # Fetch dynamic WD volume/RAID table
+    try:
+        volumes = await fetch_volume_table(data)
+        result["_volumes"] = volumes
+    except Exception as err:
+        _LOGGER.warning("Could not fetch WD volume table: %s", err)
+        result["_volumes"] = []
 
     return result
