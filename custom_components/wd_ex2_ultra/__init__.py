@@ -8,11 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import (
-    DOMAIN,
-    CONF_SCAN_INTERVAL,
-    SENSORS,
-)
+from .const import DOMAIN, CONF_SCAN_INTERVAL, SENSORS
 from .snmp_helper import fetch_snmp_data
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,7 +62,7 @@ class WDEx2UltraCoordinator(DataUpdateCoordinator):
         self.entry = entry
 
     async def _async_update_data(self) -> dict:
-        """Fetch data from WD EX2 Ultra via SNMP (async)."""
+        """Fetch data from WD EX2 Ultra via SNMP."""
         try:
             return await fetch_snmp_data(dict(self.entry.data), SENSORS)
         except Exception as err:

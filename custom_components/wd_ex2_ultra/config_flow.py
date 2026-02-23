@@ -106,9 +106,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.In(SCAN_INTERVAL_OPTIONS),
             }
         )
-        return self.async_show_form(
-            step_id="v2c", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="v2c", data_schema=schema, errors=errors)
 
     async def async_step_v3(
         self, user_input: dict[str, Any] | None = None
@@ -158,6 +156,4 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.In(SCAN_INTERVAL_OPTIONS),
             }
         )
-        return self.async_show_form(
-            step_id="v3", data_schema=schema, errors=errors
-        )
+        return self.async_show_form(step_id="v3", data_schema=schema, errors=errors)
