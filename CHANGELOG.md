@@ -7,13 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.3] – 2026-02-23
+
+### Fixed
+
+- **CRITICAL:** Switched from deprecated `pysnmp-lextudio` to the official `pysnmp` package maintained by LeXtudio Inc. The `-lextudio` postfix packages are no longer maintained and version 6.2.6 does not exist under that name.
+- Updated `manifest.json` to use `pysnmp>=6.2.0,<7.0.0` (6.2.x is the stable branch, 7.x introduces breaking API changes).
+- Added fallback imports in `snmp_helper.py` to support both new (`pysnmp.hlapi.v1arch.asyncio`) and legacy (`pysnmp.hlapi`) import paths for maximum compatibility with different Home Assistant pysnmp installations.
+- Updated all error messages to reference `pysnmp` instead of `pysnmp-lextudio`.
+
+---
+
 ## [1.0.2] – 2026-02-23
 
 ### Fixed
 
 - Added `parse_wd_temperature()` function to handle WD's proprietary temperature format `'Centigrade:48 \tFahrenheit:118'` which the NAS returns for disk temperature OIDs. The parser extracts the Celsius value and converts it to a float.
 - Improved `build_auth_data()` to catch `ImportError` immediately and raise `SnmpLibraryMissing`, preventing the error from cascading into `test_snmp_connection()`.
-- Pinned `pysnmp-lextudio` to exact version `6.2.6` in `manifest.json` to ensure consistent behavior across installations.
+- Pinned `pysnmp-lextudio` to exact version `6.2.6` in `manifest.json` to ensure consistent behavior across installations (reverted in 1.0.3).
 - Updated `fetch_snmp_data()` to apply special parsing for any sensor key containing `"temperature"`.
 
 ---
@@ -22,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Changed SNMP library dependency from `pysnmp` to `pysnmp-lextudio>=6.0.0` (the actively maintained fork with updated import paths).
+- Changed SNMP library dependency from `pysnmp` to `pysnmp-lextudio>=6.0.0` (the actively maintained fork with updated import paths) (reverted in 1.0.3).
 - Added `sanitize_host()` helper that automatically strips `http://`, `https://`, trailing slashes and whitespace from the host field — entering `http://192.168.1.100` no longer causes an error.
 - Extracted all SNMP logic into a dedicated `snmp_helper.py` module for better separation of concerns.
 - Added a dedicated `SnmpLibraryMissing` error class with a clear user-facing message when `pysnmp-lextudio` is not yet installed.

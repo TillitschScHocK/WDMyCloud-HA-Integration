@@ -53,7 +53,7 @@ def parse_wd_temperature(raw_value: str) -> float | None:
 def build_auth_data(data: dict):
     """Build the correct pysnmp auth data object based on SNMP version."""
     try:
-        from pysnmp.hlapi import (
+        from pysnmp.hlapi.v1arch.asyncio import (
             CommunityData,
             UsmUserData,
             usmHMACMD5AuthProtocol,
@@ -61,10 +61,21 @@ def build_auth_data(data: dict):
             usmDESPrivProtocol,
             usmAesCfb128Protocol,
         )
-    except ImportError as err:
-        raise SnmpLibraryMissing(
-            "pysnmp-lextudio is not installed. Please restart Home Assistant."
-        ) from err
+    except ImportError:
+        # Fallback for older pysnmp versions
+        try:
+            from pysnmp.hlapi import (
+                CommunityData,
+                UsmUserData,
+                usmHMACMD5AuthProtocol,
+                usmHMACSHAAuthProtocol,
+                usmDESPrivProtocol,
+                usmAesCfb128Protocol,
+            )
+        except ImportError as err:
+            raise SnmpLibraryMissing(
+                "pysnmp is not installed. Please restart Home Assistant."
+            ) from err
     
     from .const import (
         CONF_SNMP_VERSION,
@@ -102,7 +113,7 @@ def build_auth_data(data: dict):
 def test_snmp_connection(data: dict) -> None:
     """Perform a synchronous SNMP connectivity test (queries sysUpTime)."""
     try:
-        from pysnmp.hlapi import (
+        from pysnmp.hlapi.v1arch.asyncio import (
             getCmd,
             SnmpEngine,
             UdpTransportTarget,
@@ -110,10 +121,21 @@ def test_snmp_connection(data: dict) -> None:
             ObjectType,
             ObjectIdentity,
         )
-    except ImportError as err:
-        raise SnmpLibraryMissing(
-            "pysnmp-lextudio is not installed. Please restart Home Assistant after installation."
-        ) from err
+    except ImportError:
+        # Fallback for older pysnmp versions
+        try:
+            from pysnmp.hlapi import (
+                getCmd,
+                SnmpEngine,
+                UdpTransportTarget,
+                ContextData,
+                ObjectType,
+                ObjectIdentity,
+            )
+        except ImportError as err:
+            raise SnmpLibraryMissing(
+                "pysnmp is not installed. Please restart Home Assistant after installation."
+            ) from err
 
     try:
         host = sanitize_host(data["host"])
@@ -146,7 +168,7 @@ def test_snmp_connection(data: dict) -> None:
 def fetch_snmp_data(data: dict, sensors: list) -> dict:
     """Fetch all configured sensor OIDs via SNMP. Returns a dict keyed by sensor key."""
     try:
-        from pysnmp.hlapi import (
+        from pysnmp.hlapi.v1arch.asyncio import (
             getCmd,
             SnmpEngine,
             UdpTransportTarget,
@@ -154,8 +176,19 @@ def fetch_snmp_data(data: dict, sensors: list) -> dict:
             ObjectType,
             ObjectIdentity,
         )
-    except ImportError as err:
-        raise SnmpLibraryMissing("pysnmp-lextudio is not installed.") from err
+    except ImportError:
+        # Fallback for older pysnmp versions
+        try:
+            from pysnmp.hlapi import (
+                getCmd,
+                SnmpEngine,
+                UdpTransportTarget,
+                ContextData,
+                ObjectType,
+                ObjectIdentity,
+            )
+        except ImportError as err:
+            raise SnmpLibraryMissing("pysnmp is not installed.") from err
 
     host = sanitize_host(data["host"])
     auth_data = build_auth_data(data)
