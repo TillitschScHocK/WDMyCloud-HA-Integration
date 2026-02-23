@@ -33,8 +33,31 @@ def sanitize_host(host: str) -> str:
     return host
 
 
+def parse_snmp_number(raw_value: str) -> float | None:
+    """Safely parse a numeric string from SNMP, ignoring locale separators."""
+    if raw_value is None:
+        return None
+    s = str(raw_value).strip()
+    # Remove thousands separators (dot or space) and normalise decimal comma
+    s = re.sub(r'[\s]', '', s)          # remove spaces
+    # If both '.' and ',' exist, treat '.' as thousands sep
+    if '.' in s and ',' in s:
+        s = s.replace('.', '').replace(',', '.')
+    elif ',' in s:
+        s = s.replace(',', '.')
+    # Remove any remaining non-numeric chars except leading minus and dot
+    s = re.sub(r'[^0-9.\-]', '', s)
+    try:
+        return float(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_wd_temperature(raw_value: str) -> float | None:
-    """Parse WD temperature string 'Centigrade:48 Fahrenheit:118' to float."""
+    """Parse WD temperature string 'Centigrade:48 Fahrenheit:118' to float.
+
+    Also handles plain numeric strings returned by the WD MIB disk table.
+    """
     if not raw_value or not isinstance(raw_value, str):
         return None
     match_c = re.search(r'Centigrade:\s*(\d+)', raw_value)
@@ -43,11 +66,7 @@ def parse_wd_temperature(raw_value: str) -> float | None:
             return float(match_c.group(1))
         except (ValueError, AttributeError):
             pass
-    try:
-        return float(raw_value)
-    except (ValueError, TypeError):
-        _LOGGER.warning("Could not parse temperature value: %s", raw_value)
-        return None
+    return parse_snmp_number(raw_value)
 
 
 def _build_auth_data(data: dict):
@@ -141,8 +160,107 @@ async def test_snmp_connection(data: dict) -> None:
         raise InvalidAuth(str(error_status))
 
 
+async def walk_snmp_column(data: dict, column_oid: str) -> dict[str, str]:
+    """Walk a single SNMP table column and return {row_index: value} dict.
+
+    The row index is extracted as the last OID component after column_oid.
+    """
+    try:
+        from pysnmp.hlapi.v3arch.asyncio import (
+            SnmpEngine,
+            ContextData,
+            UdpTransportTarget,
+            ObjectType,
+            ObjectIdentity,
+            next_cmd,
+        )
+    except ImportError as err:
+        raise SnmpLibraryMissing(
+            "pysnmp 7.1.22 is not installed. Restart Home Assistant."
+        ) from err
+
+    host = sanitize_host(data["host"])
+    auth_data = _build_auth_data(data)
+    target = await UdpTransportTarget.create((host, 161), timeout=5, retries=1)
+    engine = SnmpEngine()
+    result: dict[str, str] = {}
+
+    # Walk the column using next_cmd
+    async for (error_indication, error_status, error_index, var_binds) in next_cmd(
+        engine,
+        auth_data,
+        target,
+        ContextData(),
+        ObjectType(ObjectIdentity(column_oid)),
+        lexicographicMode=False,
+    ):
+        if error_indication or error_status:
+            _LOGGER.debug("Walk ended for OID %s: %s %s", column_oid, error_indication, error_status)
+            break
+        for var_bind in var_binds:
+            oid_str = str(var_bind[0])
+            value_str = str(var_bind[1])
+            # Extract row index = last part of OID after column_oid
+            if oid_str.startswith(column_oid + "."):
+                row_idx = oid_str[len(column_oid) + 1:]
+                result[row_idx] = value_str
+            else:
+                # Walked beyond this column – stop
+                break
+        else:
+            continue
+        break
+
+    return result
+
+
+async def fetch_disk_table(data: dict) -> list[dict]:
+    """Fetch WD disk table dynamically. Returns list of disk dicts.
+
+    Each dict has keys: index, vendor, model, serial, temperature, capacity.
+    """
+    from .const import (
+        WD_DISK_COL_NUM,
+        WD_DISK_COL_VENDOR,
+        WD_DISK_COL_MODEL,
+        WD_DISK_COL_SERIAL,
+        WD_DISK_COL_TEMPERATURE,
+        WD_DISK_COL_CAPACITY,
+    )
+
+    # First walk the DiskNum column to find which indices exist
+    indices = await walk_snmp_column(data, WD_DISK_COL_NUM)
+    if not indices:
+        _LOGGER.debug("WD disk table: no disks found via SNMP walk")
+        return []
+
+    _LOGGER.debug("WD disk table indices found: %s", list(indices.keys()))
+
+    # Fetch remaining columns for each index
+    vendors    = await walk_snmp_column(data, WD_DISK_COL_VENDOR)
+    models     = await walk_snmp_column(data, WD_DISK_COL_MODEL)
+    serials    = await walk_snmp_column(data, WD_DISK_COL_SERIAL)
+    temps      = await walk_snmp_column(data, WD_DISK_COL_TEMPERATURE)
+    capacities = await walk_snmp_column(data, WD_DISK_COL_CAPACITY)
+
+    disks = []
+    for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
+        disks.append({
+            "index": idx,
+            "vendor":      vendors.get(idx, ""),
+            "model":       models.get(idx, ""),
+            "serial":      serials.get(idx, ""),
+            "temperature": parse_wd_temperature(temps.get(idx, "")),
+            "capacity":    parse_snmp_number(capacities.get(idx, "")),
+        })
+    return disks
+
+
 async def fetch_snmp_data(data: dict, sensors: list) -> dict:
-    """Fetch all sensor OIDs via SNMP. Returns dict keyed by sensor key."""
+    """Fetch all scalar sensor OIDs via SNMP. Returns dict keyed by sensor key.
+
+    Also fetches the WD disk table and adds disk_<idx>_* keys to the result.
+    """
     try:
         from pysnmp.hlapi.v3arch.asyncio import (
             SnmpEngine,
@@ -166,6 +284,7 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     for sensor in sensors:
         oid = sensor["oid"]
         key = sensor["key"]
+        transform = sensor.get("transform")
         try:
             error_indication, error_status, error_index, var_binds = await get_cmd(
                 engine,
@@ -187,16 +306,23 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
         else:
             raw_value = str(var_binds[0][1])
             if key == "system_uptime":
-                try:
-                    result[key] = round(int(raw_value) / 100, 1)
-                except (ValueError, TypeError):
-                    result[key] = raw_value
+                parsed = parse_snmp_number(raw_value)
+                result[key] = round(parsed / 100, 1) if parsed is not None else None
             elif "temperature" in key:
                 result[key] = parse_wd_temperature(raw_value)
+            elif transform == "kb_to_mib":
+                parsed = parse_snmp_number(raw_value)
+                result[key] = round(parsed / 1024, 1) if parsed is not None else None
             else:
-                try:
-                    result[key] = float(raw_value)
-                except (ValueError, TypeError):
-                    result[key] = raw_value
+                parsed = parse_snmp_number(raw_value)
+                result[key] = parsed if parsed is not None else raw_value
+
+    # Fetch dynamic WD disk table
+    try:
+        disks = await fetch_disk_table(data)
+        result["_disks"] = disks
+    except Exception as err:
+        _LOGGER.warning("Could not fetch WD disk table: %s", err)
+        result["_disks"] = []
 
     return result

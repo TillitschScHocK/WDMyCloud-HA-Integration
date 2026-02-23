@@ -27,7 +27,45 @@ PRIV_PROTOCOLS = ["DES", "AES"]
 SCAN_INTERVAL_OPTIONS = [30, 60, 120]
 DEFAULT_SCAN_INTERVAL = 60
 
-# Sensor definitions: key, name, OID, unit
+# ============================================================
+# WD MYCLOUDEX2ULTRA-MIB base OID
+# enterprises(1.3.6.1.4.1) . WD(5127) . productID(1) . projectID(1)
+#   . modelID(1) . submodelID(8) . nasAgent(1)
+# => 1.3.6.1.4.1.5127.1.1.1.8.1
+# ============================================================
+WD_NAS_AGENT = "1.3.6.1.4.1.5127.1.1.1.8.1"
+
+# Scalar WD OIDs (append .0 for GET)
+WD_OID_SYSTEM_TEMP   = WD_NAS_AGENT + ".7.0"   # mycloudex2ultraTemperature
+WD_OID_FAN_STATUS    = WD_NAS_AGENT + ".8.0"   # mycloudex2ultraFanStatus
+WD_OID_SW_VERSION    = WD_NAS_AGENT + ".2.0"   # mycloudex2ultraSoftwareVersion
+WD_OID_HOSTNAME      = WD_NAS_AGENT + ".3.0"   # mycloudex2ultraHostName
+
+# WD Disk Table OID column roots (without row index)
+# Table:  nasAgent.10
+# Entry:  nasAgent.10.1
+# Cols:   .1 DiskNum  .2 Vendor  .3 Model  .4 Serial  .5 Temperature  .6 Capacity
+WD_DISK_TABLE_ROOT      = WD_NAS_AGENT + ".10"
+WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"  # walk this to find disk indices
+WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
+WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
+WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
+WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
+WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"
+
+# WD Volume Table OID column roots
+# Table:  nasAgent.9
+# Cols:   .1 VolumeNum  .2 Name  .3 FsType  .4 RaidLevel  .5 Size  .6 FreeSpace
+WD_VOL_COL_NUM        = WD_NAS_AGENT + ".9.1.1"
+WD_VOL_COL_NAME       = WD_NAS_AGENT + ".9.1.2"
+WD_VOL_COL_FSTYPE     = WD_NAS_AGENT + ".9.1.3"
+WD_VOL_COL_RAIDLEVEL  = WD_NAS_AGENT + ".9.1.4"
+WD_VOL_COL_SIZE       = WD_NAS_AGENT + ".9.1.5"
+WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"
+
+# ============================================================
+# Static sensors (scalar OIDs, fetched with get_cmd)
+# ============================================================
 SENSORS = [
     {
         "key": "cpu_load_1min",
@@ -60,62 +98,47 @@ SENSORS = [
         "key": "ram_total",
         "name": "RAM Total",
         "oid": "1.3.6.1.4.1.2021.4.5.0",
-        "unit": "kB",
+        "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
         "state_class": "measurement",
+        "transform": "kb_to_mib",
     },
     {
         "key": "ram_free",
         "name": "RAM Free",
         "oid": "1.3.6.1.4.1.2021.4.11.0",
-        "unit": "kB",
+        "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
         "state_class": "measurement",
+        "transform": "kb_to_mib",
     },
     {
         "key": "ram_used",
         "name": "RAM Used",
         "oid": "1.3.6.1.4.1.2021.4.6.0",
-        "unit": "kB",
+        "unit": "MiB",
         "icon": "mdi:memory",
         "device_class": None,
         "state_class": "measurement",
+        "transform": "kb_to_mib",
     },
     {
-        "key": "disk1_temperature",
-        "name": "Disk 1 Temperature",
-        "oid": "1.3.6.1.4.1.5127.1.1.1.8.1.11.1",
+        "key": "system_temperature",
+        "name": "System Temperature",
+        "oid": WD_OID_SYSTEM_TEMP,
         "unit": "°C",
         "icon": "mdi:thermometer",
         "device_class": "temperature",
         "state_class": "measurement",
     },
     {
-        "key": "disk2_temperature",
-        "name": "Disk 2 Temperature",
-        "oid": "1.3.6.1.4.1.5127.1.1.1.8.1.11.2",
-        "unit": "°C",
-        "icon": "mdi:thermometer",
-        "device_class": "temperature",
-        "state_class": "measurement",
-    },
-    {
-        "key": "disk1_status",
-        "name": "Disk 1 Status",
-        "oid": "1.3.6.1.4.1.5127.1.1.1.8.1.4.1",
+        "key": "fan_status",
+        "name": "Fan Status",
+        "oid": WD_OID_FAN_STATUS,
         "unit": "",
-        "icon": "mdi:harddisk",
-        "device_class": None,
-        "state_class": None,
-    },
-    {
-        "key": "disk2_status",
-        "name": "Disk 2 Status",
-        "oid": "1.3.6.1.4.1.5127.1.1.1.8.1.4.2",
-        "unit": "",
-        "icon": "mdi:harddisk",
+        "icon": "mdi:fan",
         "device_class": None,
         "state_class": None,
     },

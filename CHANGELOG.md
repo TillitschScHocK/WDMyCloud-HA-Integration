@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] – 2026-02-23
+
+### Added
+
+- **WD System Temperature sensor** using the official `MYCLOUDEX2ULTRA-MIB` OID (`nasAgent.7`).
+- **WD Fan Status sensor** using the official MIB OID (`nasAgent.8`).
+- **Dynamic disk sensors** based on the WD disk table (`nasAgent.10`). The number of disks is detected automatically via SNMP walk, so 1-disk and 2-disk setups both work without any configuration change. Each disk gets four sensors: Temperature, Capacity, Model, Vendor.
+- New `walk_snmp_column()` async helper for iterating SNMP table columns via `next_cmd`.
+- New `fetch_disk_table()` async helper that walks all disk table columns and returns structured data.
+- New `parse_snmp_number()` helper that safely parses numeric SNMP strings regardless of locale-specific separators (fixes the `1.354.752,0` display bug).
+
+### Changed
+
+- **RAM sensors** (Total, Free, Used) are now returned in **MiB** instead of kB. This prevents Home Assistant from displaying values like `1.354.752,0 kB` due to locale-based number formatting.
+- Removed static `disk1_temperature`, `disk2_temperature`, `disk1_status`, `disk2_status` sensors. These used incorrect OID paths and are now fully replaced by the dynamic disk table sensors.
+- `fetch_snmp_data()` now always populates a `_disks` key in the coordinator data with the result of `fetch_disk_table()`.
+- `sensor.py` generates dynamic `WDEx2UltraDiskSensor` entities from `coordinator.data["_disks"]` at setup time.
+- `manifest.json` version bumped to `1.3.0`.
+
+---
+
 ## [1.0.3] – 2026-02-23
 
 ### Fixed
