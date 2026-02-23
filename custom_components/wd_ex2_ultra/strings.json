@@ -1,0 +1,43 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WD MyCloud EX2 Ultra – SNMP Version",
+        "description": "Select the SNMP version your NAS is configured for.",
+        "data": {
+          "snmp_version": "SNMP Version"
+        }
+      },
+      "v2c": {
+        "title": "WD MyCloud EX2 Ultra – SNMPv2c Settings",
+        "description": "Enter the connection details for SNMPv2c.",
+        "data": {
+          "host": "IP Address / Hostname",
+          "community": "Community String",
+          "scan_interval": "Polling Interval (seconds)"
+        }
+      },
+      "v3": {
+        "title": "WD MyCloud EX2 Ultra – SNMPv3 Settings",
+        "description": "Enter the SNMPv3 credentials for your NAS.",
+        "data": {
+          "host": "IP Address / Hostname",
+          "username": "SNMP Username",
+          "auth_protocol": "Authentication Protocol",
+          "auth_password": "Authentication Password",
+          "priv_protocol": "Privacy Protocol",
+          "priv_password": "Privacy Password",
+          "scan_interval": "Polling Interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Please check the IP address and that SNMP is enabled on your NAS.",
+      "invalid_auth": "Authentication failed. Please verify your SNMP credentials.",
+      "unknown": "An unexpected error occurred. Please check the Home Assistant logs."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  }
+}
