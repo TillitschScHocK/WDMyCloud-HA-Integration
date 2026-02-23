@@ -81,7 +81,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             }
             try:
-                await self.hass.async_add_executor_job(test_snmp_connection, data)
+                await test_snmp_connection(data)
             except SnmpLibraryMissing:
                 errors["base"] = "snmp_library_missing"
             except CannotConnect:
@@ -129,7 +129,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             }
             try:
-                await self.hass.async_add_executor_job(test_snmp_connection, data)
+                await test_snmp_connection(data)
             except SnmpLibraryMissing:
                 errors["base"] = "snmp_library_missing"
             except CannotConnect:

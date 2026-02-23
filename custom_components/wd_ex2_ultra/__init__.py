@@ -66,10 +66,8 @@ class WDEx2UltraCoordinator(DataUpdateCoordinator):
         self.entry = entry
 
     async def _async_update_data(self) -> dict:
-        """Fetch data from WD EX2 Ultra via SNMP."""
+        """Fetch data from WD EX2 Ultra via SNMP (async)."""
         try:
-            return await self.hass.async_add_executor_job(
-                fetch_snmp_data, dict(self.entry.data), SENSORS
-            )
+            return await fetch_snmp_data(dict(self.entry.data), SENSORS)
         except Exception as err:
             raise UpdateFailed(f"SNMP update failed: {err}") from err
