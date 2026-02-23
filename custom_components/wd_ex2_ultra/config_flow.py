@@ -7,9 +7,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
@@ -29,76 +27,15 @@ from .const import (
     SCAN_INTERVAL_OPTIONS,
     DEFAULT_SCAN_INTERVAL,
 )
+from .snmp_helper import (
+    CannotConnect,
+    InvalidAuth,
+    SnmpLibraryMissing,
+    sanitize_host,
+    test_snmp_connection,
+)
 
 _LOGGER = logging.getLogger(__name__)
-
-
-async def validate_snmp_connection(hass: HomeAssistant, data: dict) -> None:
-    """Validate SNMP connectivity by querying the system uptime OID."""
-    await hass.async_add_executor_job(_test_snmp, data)
-
-
-def _test_snmp(data: dict) -> None:
-    """Perform a synchronous SNMP test query."""
-    from pysnmp.hlapi import (
-        getCmd,
-        SnmpEngine,
-        CommunityData,
-        UsmUserData,
-        UdpTransportTarget,
-        ContextData,
-        ObjectType,
-        ObjectIdentity,
-        usmHMACMD5AuthProtocol,
-        usmHMACSHAAuthProtocol,
-        usmDESPrivProtocol,
-        usmAesCfb128Protocol,
-    )
-
-    snmp_version = data.get(CONF_SNMP_VERSION, SNMP_VERSION_V2C)
-    host = data[CONF_HOST]
-
-    if snmp_version == SNMP_VERSION_V2C:
-        auth_data = CommunityData(data.get(CONF_COMMUNITY, "public"), mpModel=1)
-    else:
-        auth_protocol_map = {
-            "MD5": usmHMACMD5AuthProtocol,
-            "SHA": usmHMACSHAAuthProtocol,
-        }
-        priv_protocol_map = {
-            "DES": usmDESPrivProtocol,
-            "AES": usmAesCfb128Protocol,
-        }
-        auth_data = UsmUserData(
-            data[CONF_USERNAME],
-            authKey=data[CONF_AUTH_PASSWORD],
-            privKey=data[CONF_PRIV_PASSWORD],
-            authProtocol=auth_protocol_map.get(data[CONF_AUTH_PROTOCOL], usmHMACMD5AuthProtocol),
-            privProtocol=priv_protocol_map.get(data[CONF_PRIV_PROTOCOL], usmDESPrivProtocol),
-        )
-
-    transport = UdpTransportTarget((host, 161), timeout=5, retries=1)
-    error_indication, error_status, error_index, _ = next(
-        getCmd(
-            SnmpEngine(),
-            auth_data,
-            transport,
-            ContextData(),
-            ObjectType(ObjectIdentity("1.3.6.1.2.1.1.3.0")),
-        )
-    )
-    if error_indication:
-        raise CannotConnect(str(error_indication))
-    if error_status:
-        raise InvalidAuth(str(error_status))
-
-
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect."""
-
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate invalid authentication."""
 
 
 class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -136,24 +73,27 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            clean_host = sanitize_host(user_input[CONF_HOST])
             data = {
                 CONF_SNMP_VERSION: SNMP_VERSION_V2C,
-                CONF_HOST: user_input[CONF_HOST],
+                CONF_HOST: clean_host,
                 CONF_COMMUNITY: user_input.get(CONF_COMMUNITY, "public"),
                 CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             }
             try:
-                await validate_snmp_connection(self.hass, data)
+                await self.hass.async_add_executor_job(test_snmp_connection, data)
+            except SnmpLibraryMissing:
+                errors["base"] = "snmp_library_missing"
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during SNMP v2c validation")
+            except Exception:
+                _LOGGER.exception("Unexpected error during SNMPv2c setup")
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
-                    title=f"WD EX2 Ultra ({data[CONF_HOST]})",
+                    title=f"WD EX2 Ultra ({clean_host})",
                     data=data,
                 )
 
@@ -177,9 +117,10 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            clean_host = sanitize_host(user_input[CONF_HOST])
             data = {
                 CONF_SNMP_VERSION: SNMP_VERSION_V3,
-                CONF_HOST: user_input[CONF_HOST],
+                CONF_HOST: clean_host,
                 CONF_USERNAME: user_input[CONF_USERNAME],
                 CONF_AUTH_PROTOCOL: user_input[CONF_AUTH_PROTOCOL],
                 CONF_AUTH_PASSWORD: user_input[CONF_AUTH_PASSWORD],
@@ -188,17 +129,19 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
             }
             try:
-                await validate_snmp_connection(self.hass, data)
+                await self.hass.async_add_executor_job(test_snmp_connection, data)
+            except SnmpLibraryMissing:
+                errors["base"] = "snmp_library_missing"
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidAuth:
                 errors["base"] = "invalid_auth"
-            except Exception:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during SNMP v3 validation")
+            except Exception:
+                _LOGGER.exception("Unexpected error during SNMPv3 setup")
                 errors["base"] = "unknown"
             else:
                 return self.async_create_entry(
-                    title=f"WD EX2 Ultra ({data[CONF_HOST]})",
+                    title=f"WD EX2 Ultra ({clean_host})",
                     data=data,
                 )
 

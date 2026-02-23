@@ -10,7 +10,7 @@
       },
       "v2c": {
         "title": "WD MyCloud EX2 Ultra – SNMPv2c Settings",
-        "description": "Enter the connection details for SNMPv2c.",
+        "description": "Enter the IP address or hostname of your NAS (e.g. 192.168.1.100). Do not include http://.",
         "data": {
           "host": "IP Address / Hostname",
           "community": "Community String",
@@ -19,7 +19,7 @@
       },
       "v3": {
         "title": "WD MyCloud EX2 Ultra – SNMPv3 Settings",
-        "description": "Enter the SNMPv3 credentials for your NAS.",
+        "description": "Enter the IP address or hostname of your NAS (e.g. 192.168.1.100). Do not include http://.",
         "data": {
           "host": "IP Address / Hostname",
           "username": "SNMP Username",
@@ -32,9 +32,10 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect. Please check the IP address and that SNMP is enabled on your NAS.",
+      "cannot_connect": "Failed to connect. Please check the IP address and ensure SNMP is enabled on your NAS.",
       "invalid_auth": "Authentication failed. Please verify your SNMP credentials.",
-      "unknown": "An unexpected error occurred. Please check the Home Assistant logs."
+      "snmp_library_missing": "The pysnmp-lextudio library is missing. Please restart Home Assistant after installing the integration.",
+      "unknown": "An unexpected error occurred. Please check the Home Assistant logs for details."
     },
     "abort": {
       "already_configured": "This device is already configured."

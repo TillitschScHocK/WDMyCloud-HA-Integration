@@ -1,10 +1,10 @@
 {
   "domain": "wd_ex2_ultra",
   "name": "WD MyCloud EX2 Ultra",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "documentation": "https://github.com/TillitschScHocK/WDMyCloud-HA-Integration",
   "issue_tracker": "https://github.com/TillitschScHocK/WDMyCloud-HA-Integration/issues",
-  "requirements": ["pysnmp>=4.4.12"],
+  "requirements": ["pysnmp-lextudio>=6.0.0"],
   "config_flow": true,
   "iot_class": "local_polling",
   "codeowners": ["@TillitschScHocK"]

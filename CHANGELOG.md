@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.1] – 2026-02-23
+
+### Fixed
+
+- Changed SNMP library dependency from `pysnmp` to `pysnmp-lextudio>=6.0.0` (the actively maintained fork with updated import paths).
+- Added `sanitize_host()` helper that automatically strips `http://`, `https://`, trailing slashes and whitespace from the host field — entering `http://192.168.1.100` no longer causes an error.
+- Extracted all SNMP logic into a dedicated `snmp_helper.py` module for better separation of concerns.
+- Added a dedicated `SnmpLibraryMissing` error class with a clear user-facing message when `pysnmp-lextudio` is not yet installed.
+- Improved error categorisation in the config flow: `ImportError` and transport errors are now caught individually instead of falling through to the generic `unknown` error.
+- Fixed `__init__.py` to use the new shared `fetch_snmp_data()` helper from `snmp_helper.py`.
+- Updated `strings.json` to include the new `snmp_library_missing` error message and improved host field descriptions.
+
+---
+
 ## [1.0.0] – 2026-02-23
 
 ### Added
