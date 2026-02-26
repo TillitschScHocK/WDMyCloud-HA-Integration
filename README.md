@@ -1,5 +1,6 @@
-> ⚠️ **Attention:** This project is currently under development.  
-> Values are not yet fully or accurately tracked and may be incomplete or incorrect.
+> ⚠️ **Attention:**
+> !This project is currently under development and dont work well!
+> Do not use it at the moment!!!
 
 # WD MyCloud EX2 Ultra – Home Assistant Integration
 
