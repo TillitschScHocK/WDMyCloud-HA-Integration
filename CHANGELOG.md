@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] – 2026-03-24
+
+### Fixed
+
+- **Home Assistant no longer restarts when adding the integration.** If the NAS is unreachable at startup, the integration now gracefully retries in the background instead of crashing the HA core.
+- **HA can no longer freeze due to a hanging SNMP request.** Every SNMP call now has a hard timeout. If the NAS stops responding mid-poll, the sensors go to *unavailable* and HA keeps running normally.
+- Fixed a rare error on integration unload that could leave stale data behind.
+
+### Improved
+
+- **Sensor updates are noticeably faster.** All SNMP queries (CPU, RAM, network, disk table, volume table) are now sent in parallel instead of one after another. On a typical setup this cuts each update cycle from several seconds down to roughly the time of a single request.
+- **Scan interval can now be changed after setup** without removing and re-adding the integration. Go to *Settings → Integrations → WD MyCloud EX2 Ultra → Configure*.
+
+### Changed (units)
+
+- **RAM sensors** (Total, Free, Used) now correctly report in **MiB** with full Home Assistant unit-conversion support. HA can display the value in GiB, MB, or any other unit via the sensor settings.
+- **Network In / Network Out** now use the `DATA_SIZE` device class with **Bytes** as the base unit. Home Assistant automatically converts the display to KB, MB, or GB depending on the value size.
+- **System Uptime** now uses the `DURATION` device class so HA can display it as hours, days, etc.
+- **Disk Capacity** sensors now report in **GB** with `DATA_SIZE` device class, enabling HA unit conversion.
+- **Volume sensors** (Total Size, Free Space, Used Space) now report in **MB** with `DATA_SIZE` device class.
+
+---
+
 ## [1.3.0] – 2026-02-23
 
 ### Added

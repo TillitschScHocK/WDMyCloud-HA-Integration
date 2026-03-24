@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -29,20 +30,10 @@ async def async_setup_entry(
     coordinator: WDEx2UltraCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities: list[SensorEntity] = []
-
-    # Static scalar sensors
     for sensor in SENSORS:
         entities.append(WDEx2UltraSensor(coordinator, entry, sensor))
-
     async_add_entities(entities)
 
-    # -------------------------------------------------------------------
-    # Dynamic disk and volume sensors.
-    # The coordinator may not yet have data at setup time (e.g. on the
-    # very first poll), so we register a one-shot listener that adds the
-    # dynamic entities as soon as the first successful update arrives.
-    # Subsequent updates are handled by CoordinatorEntity automatically.
-    # -------------------------------------------------------------------
     added_disk_indices: set[str] = set()
     added_volume_indices: set[str] = set()
 
@@ -53,9 +44,7 @@ async def async_setup_entry(
 
         new_entities: list[SensorEntity] = []
 
-        # --- Disk sensors ---
-        disks = coordinator.data.get("_disks", [])
-        for disk in disks:
+        for disk in coordinator.data.get("_disks", []):
             idx = disk["index"]
             if idx in added_disk_indices:
                 continue
@@ -64,7 +53,7 @@ async def async_setup_entry(
             model = disk.get("model", "").strip()
             label = f"Disk {idx}" + (f" ({model})" if model else "")
 
-            new_entities.append(
+            new_entities.extend([
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "temperature",
                     name=f"{label} Temperature",
@@ -72,19 +61,15 @@ async def async_setup_entry(
                     icon="mdi:thermometer",
                     device_class=SensorDeviceClass.TEMPERATURE,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "capacity",
                     name=f"{label} Capacity",
-                    unit="GB",
+                    unit=UnitOfInformation.GIGABYTES,
                     icon="mdi:harddisk",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "status",
                     name=f"{label} Health",
@@ -92,9 +77,7 @@ async def async_setup_entry(
                     icon="mdi:harddisk",
                     device_class=None,
                     state_class=None,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "model",
                     name=f"Disk {idx} Model",
@@ -102,9 +85,7 @@ async def async_setup_entry(
                     icon="mdi:information-outline",
                     device_class=None,
                     state_class=None,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "vendor",
                     name=f"Disk {idx} Vendor",
@@ -112,12 +93,10 @@ async def async_setup_entry(
                     icon="mdi:information-outline",
                     device_class=None,
                     state_class=None,
-                )
-            )
+                ),
+            ])
 
-        # --- Volume / RAID sensors ---
-        volumes = coordinator.data.get("_volumes", [])
-        for vol in volumes:
+        for vol in coordinator.data.get("_volumes", []):
             vidx = vol["index"]
             if vidx in added_volume_indices:
                 continue
@@ -125,37 +104,31 @@ async def async_setup_entry(
 
             vol_name = vol.get("name", "").strip() or f"Volume {vidx}"
 
-            new_entities.append(
+            new_entities.extend([
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "size_mb",
                     name=f"{vol_name} Total Size",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "free_mb",
                     name=f"{vol_name} Free Space",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "used_mb",
                     name=f"{vol_name} Used Space",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "used_pct",
                     name=f"{vol_name} Used Percent",
@@ -163,9 +136,7 @@ async def async_setup_entry(
                     icon="mdi:chart-pie",
                     device_class=None,
                     state_class=SensorStateClass.MEASUREMENT,
-                )
-            )
-            new_entities.append(
+                ),
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "raid_level",
                     name=f"{vol_name} RAID Level",
@@ -173,17 +144,13 @@ async def async_setup_entry(
                     icon="mdi:shield-half-full",
                     device_class=None,
                     state_class=None,
-                )
-            )
+                ),
+            ])
 
         if new_entities:
             async_add_entities(new_entities)
 
-    # Try to add entities immediately if data is already available
     _add_dynamic_entities()
-
-    # Also register as a coordinator listener so entities are added after
-    # the first update if coordinator.data was None during setup.
     entry.async_on_unload(
         coordinator.async_add_listener(_add_dynamic_entities)
     )
@@ -204,7 +171,7 @@ class WDEx2UltraSensor(CoordinatorEntity, SensorEntity):
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{sensor_def['key']}"
         self._attr_name = sensor_def["name"]
-        self._attr_native_unit_of_measurement = sensor_def["unit"] or None
+        self._attr_native_unit_of_measurement = sensor_def["unit"]
         self._attr_icon = sensor_def.get("icon")
 
         device_class = sensor_def.get("device_class")
@@ -212,6 +179,8 @@ class WDEx2UltraSensor(CoordinatorEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
         elif device_class == "data_size":
             self._attr_device_class = SensorDeviceClass.DATA_SIZE
+        elif device_class == "duration":
+            self._attr_device_class = SensorDeviceClass.DURATION
         else:
             self._attr_device_class = None
 
@@ -283,8 +252,7 @@ class WDEx2UltraDiskSensor(CoordinatorEntity, SensorEntity):
         """Return the current value from the disk table."""
         if self.coordinator.data is None:
             return None
-        disks: list[dict] = self.coordinator.data.get("_disks", [])
-        for disk in disks:
+        for disk in self.coordinator.data.get("_disks", []):
             if disk["index"] == self._disk_index:
                 return disk.get(self._metric)
         return None
@@ -332,8 +300,7 @@ class WDEx2UltraVolumeSensor(CoordinatorEntity, SensorEntity):
         """Return the current value from the volume table."""
         if self.coordinator.data is None:
             return None
-        volumes: list[dict] = self.coordinator.data.get("_volumes", [])
-        for vol in volumes:
+        for vol in self.coordinator.data.get("_volumes", []):
             if vol["index"] == self._volume_index:
                 return vol.get(self._metric)
         return None

@@ -157,3 +157,38 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="v3", data_schema=schema, errors=errors)
+
+
+class WDEx2UltraOptionsFlow(config_entries.OptionsFlow):
+    """Handle options for WD MyCloud EX2 Ultra (change scan interval after setup)."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_interval = self._config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self._config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_SCAN_INTERVAL, default=current_interval): vol.In(
+                    SCAN_INTERVAL_OPTIONS
+                ),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
+
+
+# Register the options flow
+WDEx2UltraConfigFlow.async_get_options_flow = staticmethod(
+    lambda config_entry: WDEx2UltraOptionsFlow(config_entry)
+)
