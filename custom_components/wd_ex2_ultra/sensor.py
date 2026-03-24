@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -78,9 +79,9 @@ async def async_setup_entry(
                 WDEx2UltraDiskSensor(
                     coordinator, entry, idx, "capacity",
                     name=f"{label} Capacity",
-                    unit="GB",
+                    unit=UnitOfInformation.GIGABYTES,
                     icon="mdi:harddisk",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 )
             )
@@ -129,9 +130,9 @@ async def async_setup_entry(
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "size_mb",
                     name=f"{vol_name} Total Size",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 )
             )
@@ -139,9 +140,9 @@ async def async_setup_entry(
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "free_mb",
                     name=f"{vol_name} Free Space",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 )
             )
@@ -149,9 +150,9 @@ async def async_setup_entry(
                 WDEx2UltraVolumeSensor(
                     coordinator, entry, vidx, "used_mb",
                     name=f"{vol_name} Used Space",
-                    unit="MB",
+                    unit=UnitOfInformation.MEGABYTES,
                     icon="mdi:nas",
-                    device_class=None,
+                    device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 )
             )
@@ -212,6 +213,8 @@ class WDEx2UltraSensor(CoordinatorEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
         elif device_class == "data_size":
             self._attr_device_class = SensorDeviceClass.DATA_SIZE
+        elif device_class == "duration":
+            self._attr_device_class = SensorDeviceClass.DURATION
         else:
             self._attr_device_class = None
 

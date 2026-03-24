@@ -1,5 +1,8 @@
 """Constants for the WD MyCloud EX2 Ultra integration."""
 
+from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.const import UnitOfInformation, UnitOfTime
+
 DOMAIN = "wd_ex2_ultra"
 
 # Config keys
@@ -127,9 +130,9 @@ SENSORS = [
         "key": "ram_total",
         "name": "RAM Total",
         "oid": "1.3.6.1.4.1.2021.4.5.0",   # memTotalReal
-        "unit": "MiB",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
         "transform": "kb_to_mib",
     },
@@ -140,9 +143,9 @@ SENSORS = [
         # Previously used memTotalFree (.4.11.0) which includes swap space
         # and could therefore exceed RAM Total.
         "oid": "1.3.6.1.4.1.2021.4.6.0",
-        "unit": "MiB",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
         "transform": "kb_to_mib",
     },
@@ -153,9 +156,9 @@ SENSORS = [
         # Computed as ram_total - ram_free in snmp_helper.fetch_snmp_data.
         "oid": None,
         "computed": True,
-        "unit": "MiB",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
     },
     {
@@ -200,9 +203,9 @@ SENSORS = [
         "key": "system_uptime",
         "name": "System Uptime",
         "oid": "1.3.6.1.2.1.1.3.0",
-        "unit": "s",
+        "unit": UnitOfTime.SECONDS,
         "icon": "mdi:timer-outline",
-        "device_class": None,
+        "device_class": "duration",
         "state_class": "measurement",
     },
 ]
