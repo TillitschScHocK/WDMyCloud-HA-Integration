@@ -1,5 +1,7 @@
 """Constants for the WD MyCloud EX2 Ultra integration."""
 
+from homeassistant.const import UnitOfInformation, UnitOfTemperature, UnitOfTime
+
 DOMAIN = "wd_ex2_ultra"
 
 # Config keys
@@ -41,18 +43,15 @@ WD_OID_FAN_STATUS    = WD_NAS_AGENT + ".8.0"   # mycloudex2ultraFanStatus
 WD_OID_SW_VERSION    = WD_NAS_AGENT + ".2.0"   # mycloudex2ultraSoftwareVersion
 WD_OID_HOSTNAME      = WD_NAS_AGENT + ".3.0"   # mycloudex2ultraHostName
 
-# WD Disk Table OID column roots (without row index)
-# Table:  nasAgent.10
-# Entry:  nasAgent.10.1
-# Cols:   .1 DiskNum  .2 Vendor  .3 Model  .4 Serial  .5 Temperature  .6 Capacity  .7 Status
+# WD Disk Table OID column roots
 WD_DISK_TABLE_ROOT      = WD_NAS_AGENT + ".10"
-WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"  # walk this to find disk indices
+WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"
 WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
 WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
 WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
 WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
 WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"
-WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"  # DiskStatus: 0=Unknown 1=Good 2=Degraded 3=Failure
+WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"
 
 # Disk status integer -> human-readable string
 DISK_STATUS_MAP = {
@@ -63,8 +62,6 @@ DISK_STATUS_MAP = {
 }
 
 # WD Volume Table OID column roots
-# Table:  nasAgent.9
-# Cols:   .1 VolumeNum  .2 Name  .3 FsType  .4 RaidLevel  .5 Size  .6 FreeSpace
 WD_VOL_COL_NUM        = WD_NAS_AGENT + ".9.1.1"
 WD_VOL_COL_NAME       = WD_NAS_AGENT + ".9.1.2"
 WD_VOL_COL_FSTYPE     = WD_NAS_AGENT + ".9.1.3"
@@ -82,9 +79,7 @@ RAID_LEVEL_MAP = {
 }
 
 # ============================================================
-# Network interface OIDs – using 64-bit High Capacity counters
-# (IF-MIB::ifHCInOctets / ifHCOutOctets) instead of the 32-bit
-# ifInOctets / ifOutOctets which wrap around at ~4 GB.
+# Network interface OIDs - 64-bit High Capacity counters
 # Interface index 2 = eth0 on the WD MyCloud EX2 Ultra.
 # ============================================================
 IF_HC_IN_OCTETS_ETH0  = "1.3.6.1.2.1.31.1.1.1.6.2"   # ifHCInOctets.2
@@ -92,8 +87,9 @@ IF_HC_OUT_OCTETS_ETH0 = "1.3.6.1.2.1.31.1.1.1.10.2"  # ifHCOutOctets.2
 
 # ============================================================
 # Static sensors (scalar OIDs, fetched with get_cmd)
-# Sensors with "computed": True are not fetched via SNMP but
-# computed in snmp_helper.fetch_snmp_data from other values.
+# Sensors with "computed": True are derived from other values.
+# All units use HA typed constants (UnitOfInformation etc.) so
+# Home Assistant can perform automatic unit conversion in the UI.
 # ============================================================
 SENSORS = [
     {
@@ -126,43 +122,38 @@ SENSORS = [
     {
         "key": "ram_total",
         "name": "RAM Total",
-        "oid": "1.3.6.1.4.1.2021.4.5.0",   # memTotalReal
-        "unit": "MiB",
+        "oid": "1.3.6.1.4.1.2021.4.5.0",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
         "transform": "kb_to_mib",
     },
     {
         "key": "ram_free",
         "name": "RAM Free",
-        # memAvailReal – actual free physical RAM only.
-        # Previously used memTotalFree (.4.11.0) which includes swap space
-        # and could therefore exceed RAM Total.
         "oid": "1.3.6.1.4.1.2021.4.6.0",
-        "unit": "MiB",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
         "transform": "kb_to_mib",
     },
     {
         "key": "ram_used",
         "name": "RAM Used",
-        # No direct OID for used physical RAM in UCD-SNMP-MIB.
-        # Computed as ram_total - ram_free in snmp_helper.fetch_snmp_data.
         "oid": None,
         "computed": True,
-        "unit": "MiB",
+        "unit": UnitOfInformation.MEBIBYTES,
         "icon": "mdi:memory",
-        "device_class": None,
+        "device_class": "data_size",
         "state_class": "measurement",
     },
     {
         "key": "system_temperature",
         "name": "System Temperature",
         "oid": WD_OID_SYSTEM_TEMP,
-        "unit": "°C",
+        "unit": UnitOfTemperature.CELSIUS,
         "icon": "mdi:thermometer",
         "device_class": "temperature",
         "state_class": "measurement",
@@ -171,27 +162,25 @@ SENSORS = [
         "key": "fan_status",
         "name": "Fan Status",
         "oid": WD_OID_FAN_STATUS,
-        "unit": "",
+        "unit": None,
         "icon": "mdi:fan",
         "device_class": None,
         "state_class": None,
     },
     {
-        # 64-bit counter – replaces old 32-bit ifInOctets (wraps at ~4 GB)
         "key": "network_in",
         "name": "Network In (eth0)",
         "oid": IF_HC_IN_OCTETS_ETH0,
-        "unit": "B",
+        "unit": UnitOfInformation.BYTES,
         "icon": "mdi:download-network",
         "device_class": "data_size",
         "state_class": "total_increasing",
     },
     {
-        # 64-bit counter – replaces old 32-bit ifOutOctets (wraps at ~4 GB)
         "key": "network_out",
         "name": "Network Out (eth0)",
         "oid": IF_HC_OUT_OCTETS_ETH0,
-        "unit": "B",
+        "unit": UnitOfInformation.BYTES,
         "icon": "mdi:upload-network",
         "device_class": "data_size",
         "state_class": "total_increasing",
@@ -200,9 +189,9 @@ SENSORS = [
         "key": "system_uptime",
         "name": "System Uptime",
         "oid": "1.3.6.1.2.1.1.3.0",
-        "unit": "s",
+        "unit": UnitOfTime.SECONDS,
         "icon": "mdi:timer-outline",
-        "device_class": None,
+        "device_class": "duration",
         "state_class": "measurement",
     },
 ]
