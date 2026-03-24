@@ -50,15 +50,23 @@ WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
 WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
 WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
 WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
-WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"
+WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # value is in MB -> convert to GB
 WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"
 
 # Disk status integer -> human-readable string
+# 0 = Not present / no specific status reported by WD MIB -> treat as "Normal"
+# 1 = Good, 2 = Degraded, 3 = Failure
 DISK_STATUS_MAP = {
-    "0": "Unknown",
+    "0": "Normal",
     "1": "Good",
     "2": "Degraded",
     "3": "Failure",
+}
+
+# Fan status integer -> human-readable string
+FAN_STATUS_MAP = {
+    "0": "Normal",
+    "1": "Error",
 }
 
 # WD Volume Table OID column roots
@@ -66,8 +74,8 @@ WD_VOL_COL_NUM        = WD_NAS_AGENT + ".9.1.1"
 WD_VOL_COL_NAME       = WD_NAS_AGENT + ".9.1.2"
 WD_VOL_COL_FSTYPE     = WD_NAS_AGENT + ".9.1.3"
 WD_VOL_COL_RAIDLEVEL  = WD_NAS_AGENT + ".9.1.4"
-WD_VOL_COL_SIZE       = WD_NAS_AGENT + ".9.1.5"   # in MB
-WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"   # in MB
+WD_VOL_COL_SIZE       = WD_NAS_AGENT + ".9.1.5"   # value is in KB -> convert to GiB
+WD_VOL_COL_FREESPACE  = WD_NAS_AGENT + ".9.1.6"   # value is in KB -> convert to GiB
 
 # RAID level integer -> human-readable string
 RAID_LEVEL_MAP = {
@@ -162,10 +170,12 @@ SENSORS = [
         "key": "fan_status",
         "name": "Fan Status",
         "oid": WD_OID_FAN_STATUS,
+        # No unit, no device_class -> displayed as text via fan_status_text transform
         "unit": None,
         "icon": "mdi:fan",
         "device_class": None,
         "state_class": None,
+        "transform": "fan_status_map",
     },
     {
         "key": "network_in",

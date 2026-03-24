@@ -106,7 +106,7 @@ async def _make_engine_and_target(imports, host: str):
     target = await UdpTransportTarget.create(
         (host, SNMP_PORT), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES
     )
-    engine = await asyncio.get_running_loop().run_in_executor(None, SnmpEngine)
+    engine = SnmpEngine()
     return engine, target
 
 
@@ -247,7 +247,10 @@ async def walk_snmp_column(
 
 
 async def fetch_disk_table(engine, auth_data, target, imports, data: dict) -> list[dict]:
-    """Fetch WD disk table dynamically using shared engine/target."""
+    """Fetch WD disk table dynamically using shared engine/target.
+
+    Disk capacity OID returns value in MB. We convert to GB (/ 1000) for display.
+    """
     from .const import (
         WD_DISK_COL_NUM, WD_DISK_COL_VENDOR, WD_DISK_COL_MODEL,
         WD_DISK_COL_SERIAL, WD_DISK_COL_TEMPERATURE,
@@ -273,20 +276,26 @@ async def fetch_disk_table(engine, auth_data, target, imports, data: dict) -> li
     disks = []
     for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
         raw_status = statuses.get(idx, "0")
+        raw_capacity_mb = parse_snmp_number(capacities.get(idx, ""))
+        # WD MIB reports disk capacity in MB -> convert to GB
+        capacity_gb = round(raw_capacity_mb / 1000, 2) if raw_capacity_mb is not None else None
         disks.append({
             "index":       idx,
             "vendor":      vendors.get(idx, ""),
             "model":       models.get(idx, ""),
             "serial":      serials.get(idx, ""),
             "temperature": parse_wd_temperature(temps.get(idx, "")),
-            "capacity":    parse_snmp_number(capacities.get(idx, "")),
+            "capacity":    capacity_gb,
             "status":      DISK_STATUS_MAP.get(raw_status, raw_status),
         })
     return disks
 
 
 async def fetch_volume_table(engine, auth_data, target, imports, data: dict) -> list[dict]:
-    """Fetch WD volume/RAID table dynamically using shared engine/target."""
+    """Fetch WD volume/RAID table dynamically using shared engine/target.
+
+    Volume size/free OIDs return values in KB. We convert to GiB for display.
+    """
     from .const import (
         WD_VOL_COL_NUM, WD_VOL_COL_NAME, WD_VOL_COL_FSTYPE,
         WD_VOL_COL_RAIDLEVEL, WD_VOL_COL_SIZE, WD_VOL_COL_FREESPACE,
@@ -310,23 +319,26 @@ async def fetch_volume_table(engine, auth_data, target, imports, data: dict) -> 
 
     volumes = []
     for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
-        size_mb = parse_snmp_number(sizes.get(idx, ""))
-        free_mb = parse_snmp_number(frees.get(idx, ""))
-        used_mb = None
+        # WD MIB reports volume size and free space in KB -> convert to GiB
+        raw_size_kb = parse_snmp_number(sizes.get(idx, ""))
+        raw_free_kb = parse_snmp_number(frees.get(idx, ""))
+        size_gib = round(raw_size_kb / 1024 / 1024, 2) if raw_size_kb is not None else None
+        free_gib = round(raw_free_kb / 1024 / 1024, 2) if raw_free_kb is not None else None
+        used_gib = None
         used_pct = None
-        if size_mb is not None and free_mb is not None:
-            used_mb = round(size_mb - free_mb, 1)
-            if size_mb > 0:
-                used_pct = round((used_mb / size_mb) * 100, 1)
+        if size_gib is not None and free_gib is not None:
+            used_gib = round(size_gib - free_gib, 2)
+            if size_gib > 0:
+                used_pct = round((used_gib / size_gib) * 100, 1)
         raw_raid = raidlevels.get(idx, "")
         volumes.append({
             "index":      idx,
             "name":       names.get(idx, ""),
             "fstype":     fstypes.get(idx, ""),
             "raid_level": RAID_LEVEL_MAP.get(raw_raid, raw_raid),
-            "size_mb":    size_mb,
-            "free_mb":    free_mb,
-            "used_mb":    used_mb,
+            "size_gib":   size_gib,
+            "free_gib":   free_gib,
+            "used_gib":   used_gib,
             "used_pct":   used_pct,
         })
     return volumes
@@ -382,6 +394,7 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
             return key, None
 
         raw_value = str(var_binds[0][1])
+
         if key == "system_uptime":
             parsed = parse_snmp_number(raw_value)
             return key, round(parsed / 100, 1) if parsed is not None else None
@@ -390,6 +403,9 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
         if transform == "kb_to_mib":
             parsed = parse_snmp_number(raw_value)
             return key, round(parsed / 1024, 1) if parsed is not None else None
+        if transform == "fan_status_map":
+            from .const import FAN_STATUS_MAP
+            return key, FAN_STATUS_MAP.get(raw_value.strip(), raw_value)
         parsed = parse_snmp_number(raw_value)
         return key, parsed if parsed is not None else raw_value
 

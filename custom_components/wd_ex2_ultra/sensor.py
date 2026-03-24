@@ -106,25 +106,25 @@ async def async_setup_entry(
 
             new_entities.extend([
                 WDEx2UltraVolumeSensor(
-                    coordinator, entry, vidx, "size_mb",
+                    coordinator, entry, vidx, "size_gib",
                     name=f"{vol_name} Total Size",
-                    unit=UnitOfInformation.MEGABYTES,
+                    unit=UnitOfInformation.GIBIBYTES,
                     icon="mdi:nas",
                     device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 ),
                 WDEx2UltraVolumeSensor(
-                    coordinator, entry, vidx, "free_mb",
+                    coordinator, entry, vidx, "free_gib",
                     name=f"{vol_name} Free Space",
-                    unit=UnitOfInformation.MEGABYTES,
+                    unit=UnitOfInformation.GIBIBYTES,
                     icon="mdi:nas",
                     device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
                 ),
                 WDEx2UltraVolumeSensor(
-                    coordinator, entry, vidx, "used_mb",
+                    coordinator, entry, vidx, "used_gib",
                     name=f"{vol_name} Used Space",
-                    unit=UnitOfInformation.MEGABYTES,
+                    unit=UnitOfInformation.GIBIBYTES,
                     icon="mdi:nas",
                     device_class=SensorDeviceClass.DATA_SIZE,
                     state_class=SensorStateClass.MEASUREMENT,
