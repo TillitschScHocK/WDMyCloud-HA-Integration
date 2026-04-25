@@ -1,439 +1,402 @@
-"""Shared async SNMP helper functions for WD MyCloud EX2 Ultra.
-
-Uses pysnmp.hlapi.v3arch.asyncio - the same API as HA core's built-in
-SNMP integration (pysnmp==7.1.22).
-"""
+"""SNMP helper for WD MyCloud EX2 Ultra integration."""
 from __future__ import annotations
 
 import asyncio
 import logging
 import re
-
-from homeassistant.exceptions import HomeAssistantError
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
 SNMP_TIMEOUT = 5
 SNMP_RETRIES = 1
 SNMP_PORT = 161
-MAX_WALK_ITERATIONS = 100
+
+# ---------------------------------------------------------------
+# Custom exceptions
+# ---------------------------------------------------------------
+
+class SnmpLibraryMissing(Exception):
+    """Raised when pysnmp is not installed."""
+
+class CannotConnect(Exception):
+    """Raised when the SNMP agent is unreachable."""
+
+class InvalidAuth(Exception):
+    """Raised when SNMP authentication fails."""
 
 
-class CannotConnect(HomeAssistantError):
-    """Error to indicate we cannot connect to the device."""
+# ---------------------------------------------------------------
+# Transform helpers
+# ---------------------------------------------------------------
 
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate invalid SNMP credentials."""
-
-
-class SnmpLibraryMissing(HomeAssistantError):
-    """Error to indicate pysnmp is not installed or incompatible."""
-
-
-def _get_snmp_imports():
-    """Import pysnmp async API; raise SnmpLibraryMissing on failure."""
+def timeticks_to_seconds(value: Any) -> float | None:
+    """Convert SNMP TimeTicks (1/100 s) to seconds."""
     try:
-        from pysnmp.hlapi.v3arch.asyncio import (
-            SnmpEngine,
-            ContextData,
-            UdpTransportTarget,
-            ObjectType,
-            ObjectIdentity,
-            get_cmd,
-            next_cmd,
-            CommunityData,
-            UsmUserData,
-            usmHMACMD5AuthProtocol,
-            usmHMACSHAAuthProtocol,
-            usmDESPrivProtocol,
-            usmAesCfb128Protocol,
-        )
-        return (
-            SnmpEngine, ContextData, UdpTransportTarget, ObjectType,
-            ObjectIdentity, get_cmd, next_cmd, CommunityData, UsmUserData,
-            usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
-            usmDESPrivProtocol, usmAesCfb128Protocol,
-        )
-    except ImportError as err:
-        raise SnmpLibraryMissing(
-            "pysnmp 7.1.22 is not installed. Restart Home Assistant after HACS installation."
-        ) from err
-
-
-def sanitize_host(host: str) -> str:
-    """Strip http://, https://, trailing slashes and whitespace."""
-    host = host.strip()
-    host = re.sub(r'^https?://', '', host)
-    return host.rstrip('/')
-
-
-def parse_snmp_number(raw_value: str) -> float | None:
-    """Safely parse a numeric string from SNMP, ignoring locale separators."""
-    if raw_value is None:
+        return round(int(value) / 100, 1)
+    except (TypeError, ValueError):
         return None
-    s = str(raw_value).strip()
-    s = re.sub(r'[\s]', '', s)
-    if '.' in s and ',' in s:
-        s = s.replace('.', '').replace(',', '.')
-    elif ',' in s:
-        s = s.replace(',', '.')
-    s = re.sub(r'[^0-9.\-]', '', s)
+
+
+def hrStorage_kb_to_mib(value: Any) -> float | None:
+    """Convert hrStorage raw blocks (alloc_unit=1024 bytes) to MiB."""
     try:
-        return float(s)
-    except (ValueError, TypeError):
+        return round(int(value) * 1024 / 1024 / 1024, 1)
+    except (TypeError, ValueError):
         return None
 
 
-def parse_wd_temperature(raw_value: str) -> float | None:
-    """Parse WD temperature string 'Centigrade:48 Fahrenheit:118' to float."""
-    if not raw_value or not isinstance(raw_value, str):
+def hrStorage_blocks_to_gib(value: Any) -> float | None:
+    """Convert hrStorage raw blocks (alloc_unit=512 bytes) to GiB."""
+    try:
+        return round(int(value) * 512 / (1024 ** 3), 2)
+    except (TypeError, ValueError):
         return None
-    match_c = re.search(r'Centigrade:\s*(\d+)', raw_value)
-    if match_c:
-        try:
-            return float(match_c.group(1))
-        except (ValueError, AttributeError):
-            pass
-    return parse_snmp_number(raw_value)
 
 
-async def _make_engine_and_target(imports, host: str):
-    """Create SnmpEngine and UdpTransportTarget (shared across all queries)."""
-    (
-        SnmpEngine, ContextData, UdpTransportTarget, *_rest
-    ) = imports
-    target = await UdpTransportTarget.create(
-        (host, SNMP_PORT), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES
-    )
-    engine = SnmpEngine()
-    return engine, target
+def bps_to_mbit(value: Any) -> str | None:
+    """Convert bits/s to a human-readable Mbit/s string."""
+    try:
+        return f"{int(value) / 1_000_000:.0f} Mbit/s"
+    except (TypeError, ValueError):
+        return None
 
 
-def _build_auth_data(imports, data: dict):
-    """Build pysnmp auth data based on SNMP version."""
-    (
-        SnmpEngine, ContextData, UdpTransportTarget, ObjectType,
-        ObjectIdentity, get_cmd, next_cmd, CommunityData, UsmUserData,
+def if_oper_status_map(value: Any) -> str | None:
+    """Map ifOperStatus integer to a human-readable string."""
+    _MAP = {
+        1: "up",
+        2: "down",
+        3: "testing",
+        4: "unknown",
+        5: "dormant",
+        6: "notPresent",
+        7: "lowerLayerDown",
+    }
+    try:
+        return _MAP.get(int(value), str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_wd_temperature(value: Any) -> float | None:
+    """Parse WD temperature string 'Centigrade:48 Fahrenheit:118' -> 48.0."""
+    try:
+        match = re.search(r"Centigrade:(\d+)", str(value))
+        if match:
+            return float(match.group(1))
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def fan_status_map(value: Any) -> str | None:
+    """Map WD fan status integer to a human-readable string."""
+    _MAP = {"0": "Normal", "1": "Error"}
+    try:
+        return _MAP.get(str(int(value)), str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+TRANSFORMS = {
+    "timeticks_to_seconds": timeticks_to_seconds,
+    "hrStorage_kb_to_mib": hrStorage_kb_to_mib,
+    "hrStorage_blocks_to_gib": hrStorage_blocks_to_gib,
+    "bps_to_mbit": bps_to_mbit,
+    "if_oper_status_map": if_oper_status_map,
+    "parse_wd_temperature": parse_wd_temperature,
+    "fan_status_map": fan_status_map,
+}
+
+
+# ---------------------------------------------------------------
+# SNMP transport / credential helpers
+# ---------------------------------------------------------------
+
+def _build_v2c_params(community: str):
+    from pysnmp.hlapi.v3arch.asyncio import CommunityData, UdpTransportTarget, SnmpEngine
+    return CommunityData(community, mpModel=1)
+
+
+def _build_v3_params(username: str, auth_protocol: str, auth_password: str,
+                     priv_protocol: str, priv_password: str):
+    from pysnmp.hlapi.v3arch.asyncio import UsmUserData
+    from pysnmp.hlapi.v3arch.asyncio import (
         usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
         usmDESPrivProtocol, usmAesCfb128Protocol,
-    ) = imports
-
-    from .const import (
-        CONF_SNMP_VERSION, CONF_COMMUNITY, CONF_USERNAME,
-        CONF_AUTH_PROTOCOL, CONF_AUTH_PASSWORD,
-        CONF_PRIV_PROTOCOL, CONF_PRIV_PASSWORD,
-        SNMP_VERSION_V2C,
     )
 
-    snmp_version = data.get(CONF_SNMP_VERSION, SNMP_VERSION_V2C)
-
-    if snmp_version == SNMP_VERSION_V2C:
-        return CommunityData(data.get(CONF_COMMUNITY, "public"), mpModel=1)
-
-    auth_protocol_map = {
-        "MD5": usmHMACMD5AuthProtocol,
-        "SHA": usmHMACSHAAuthProtocol,
-    }
-    priv_protocol_map = {
-        "DES": usmDESPrivProtocol,
-        "AES": usmAesCfb128Protocol,
-    }
+    auth_proto = (
+        usmHMACSHAAuthProtocol if auth_protocol.upper() == "SHA"
+        else usmHMACMD5AuthProtocol
+    )
+    priv_proto = (
+        usmAesCfb128Protocol if priv_protocol.upper() == "AES"
+        else usmDESPrivProtocol
+    )
     return UsmUserData(
-        data[CONF_USERNAME],
-        authKey=data[CONF_AUTH_PASSWORD],
-        privKey=data[CONF_PRIV_PASSWORD],
-        authProtocol=auth_protocol_map.get(data[CONF_AUTH_PROTOCOL], usmHMACMD5AuthProtocol),
-        privProtocol=priv_protocol_map.get(data[CONF_PRIV_PROTOCOL], usmDESPrivProtocol),
+        username,
+        authKey=auth_password,
+        privKey=priv_password,
+        authProtocol=auth_proto,
+        privProtocol=priv_proto,
     )
 
 
-async def test_snmp_connection(data: dict) -> None:
-    """Async SNMP connectivity test - queries sysUpTime (1.3.6.1.2.1.1.3.0)."""
-    imports = _get_snmp_imports()
-    (
-        SnmpEngine, ContextData, UdpTransportTarget, ObjectType,
-        ObjectIdentity, get_cmd, *_rest
-    ) = imports
+async def _snmp_get_one(engine, auth_data, transport, oid_str: str) -> Any:
+    """Perform a single SNMP GET and return the raw value (or None on error)."""
+    from pysnmp.hlapi.v3arch.asyncio import get_cmd, ObjectType, ObjectIdentity
 
     try:
-        host = sanitize_host(data["host"])
-        auth_data = _build_auth_data(imports, data)
-        engine, target = await _make_engine_and_target(imports, host)
-
-        error_indication, error_status, error_index, _ = await asyncio.wait_for(
-            get_cmd(
-                engine,
-                auth_data,
-                target,
-                ContextData(),
-                ObjectType(ObjectIdentity("1.3.6.1.2.1.1.3.0")),
-            ),
-            timeout=SNMP_TIMEOUT + 2,
+        error_indication, error_status, error_index, var_binds = await get_cmd(
+            engine,
+            auth_data,
+            transport,
+            ObjectType(ObjectIdentity(oid_str)),
         )
-    except SnmpLibraryMissing:
-        raise
-    except asyncio.TimeoutError as err:
-        raise CannotConnect("SNMP connection timed out") from err
-    except Exception as err:
-        _LOGGER.exception("Unexpected error during SNMP test: %s", err)
-        raise CannotConnect(str(err)) from err
 
-    if error_indication:
-        _LOGGER.error("SNMP test error_indication: %s", error_indication)
-        raise CannotConnect(str(error_indication))
-    if error_status:
-        _LOGGER.error("SNMP test error_status: %s", error_status)
-        raise InvalidAuth(str(error_status))
+        if error_indication:
+            _LOGGER.debug("SNMP GET %s: %s", oid_str, error_indication)
+            return None
+        if error_status:
+            _LOGGER.debug("SNMP GET %s error status: %s", oid_str, error_status)
+            return None
 
+        for var_bind in var_binds:
+            return var_bind[1]
 
-async def walk_snmp_column(
-    engine, auth_data, target, imports, column_oid: str
-) -> dict[str, str]:
-    """Walk a single SNMP table column; return {row_index: value}.
-
-    Hard-limited to MAX_WALK_ITERATIONS to guard against misbehaving agents.
-    """
-    (
-        SnmpEngine, ContextData, UdpTransportTarget, ObjectType,
-        ObjectIdentity, get_cmd, next_cmd, *_rest
-    ) = imports
-
-    result: dict[str, str] = {}
-    current_oid = column_oid
-    iterations = 0
-
-    while iterations < MAX_WALK_ITERATIONS:
-        iterations += 1
-        try:
-            error_indication, error_status, error_index, var_binds = await asyncio.wait_for(
-                next_cmd(
-                    engine,
-                    auth_data,
-                    target,
-                    ContextData(),
-                    ObjectType(ObjectIdentity(current_oid)),
-                ),
-                timeout=SNMP_TIMEOUT + 2,
-            )
-        except asyncio.TimeoutError:
-            _LOGGER.debug("Walk timeout for OID %s", current_oid)
-            break
-        except Exception as err:
-            _LOGGER.debug("Walk exception for OID %s: %s", current_oid, err)
-            break
-
-        if error_indication or error_status:
-            _LOGGER.debug(
-                "Walk ended for OID %s: %s %s", column_oid, error_indication, error_status
-            )
-            break
-
-        if not var_binds:
-            break
-
-        var_bind = var_binds[0]
-        oid_str = str(var_bind[0])
-        value_str = str(var_bind[1])
-
-        if not oid_str.startswith(column_oid + "."):
-            break
-
-        row_idx = oid_str[len(column_oid) + 1:]
-        result[row_idx] = value_str
-        current_oid = oid_str
-
-    return result
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.debug("SNMP GET %s exception: %s", oid_str, exc)
+        return None
 
 
-async def fetch_disk_table(engine, auth_data, target, imports, data: dict) -> list[dict]:
-    """Fetch WD disk table dynamically using shared engine/target.
-
-    Disk capacity OID returns value in MB. We convert to GB (/ 1000) for display.
-    """
-    from .const import (
-        WD_DISK_COL_NUM, WD_DISK_COL_VENDOR, WD_DISK_COL_MODEL,
-        WD_DISK_COL_SERIAL, WD_DISK_COL_TEMPERATURE,
-        WD_DISK_COL_CAPACITY, WD_DISK_COL_STATUS, DISK_STATUS_MAP,
-    )
-
-    indices = await walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_NUM)
-    if not indices:
-        _LOGGER.debug("WD disk table: no disks found via SNMP walk")
-        return []
-
-    _LOGGER.debug("WD disk table indices found: %s", list(indices.keys()))
-
-    vendors, models, serials, temps, capacities, statuses = await asyncio.gather(
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_VENDOR),
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_MODEL),
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_SERIAL),
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_TEMPERATURE),
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_CAPACITY),
-        walk_snmp_column(engine, auth_data, target, imports, WD_DISK_COL_STATUS),
-    )
-
-    disks = []
-    for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
-        raw_status = statuses.get(idx, "0")
-        raw_capacity_mb = parse_snmp_number(capacities.get(idx, ""))
-        # WD MIB reports disk capacity in MB -> convert to GB
-        capacity_gb = round(raw_capacity_mb / 1000, 2) if raw_capacity_mb is not None else None
-        disks.append({
-            "index":       idx,
-            "vendor":      vendors.get(idx, ""),
-            "model":       models.get(idx, ""),
-            "serial":      serials.get(idx, ""),
-            "temperature": parse_wd_temperature(temps.get(idx, "")),
-            "capacity":    capacity_gb,
-            "status":      DISK_STATUS_MAP.get(raw_status, raw_status),
-        })
-    return disks
-
-
-async def fetch_volume_table(engine, auth_data, target, imports, data: dict) -> list[dict]:
-    """Fetch WD volume/RAID table dynamically using shared engine/target.
-
-    Volume size/free OIDs return values in KB. We convert to GiB for display.
-    """
-    from .const import (
-        WD_VOL_COL_NUM, WD_VOL_COL_NAME, WD_VOL_COL_FSTYPE,
-        WD_VOL_COL_RAIDLEVEL, WD_VOL_COL_SIZE, WD_VOL_COL_FREESPACE,
-        RAID_LEVEL_MAP,
-    )
-
-    indices = await walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_NUM)
-    if not indices:
-        _LOGGER.debug("WD volume table: no volumes found via SNMP walk")
-        return []
-
-    _LOGGER.debug("WD volume table indices found: %s", list(indices.keys()))
-
-    names, fstypes, raidlevels, sizes, frees = await asyncio.gather(
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_NAME),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_FSTYPE),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_RAIDLEVEL),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_SIZE),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_FREESPACE),
-    )
-
-    volumes = []
-    for idx in sorted(indices.keys(), key=lambda x: int(x) if x.isdigit() else x):
-        # WD MIB reports volume size and free space in KB -> convert to GiB
-        raw_size_kb = parse_snmp_number(sizes.get(idx, ""))
-        raw_free_kb = parse_snmp_number(frees.get(idx, ""))
-        size_gib = round(raw_size_kb / 1024 / 1024, 2) if raw_size_kb is not None else None
-        free_gib = round(raw_free_kb / 1024 / 1024, 2) if raw_free_kb is not None else None
-        used_gib = None
-        used_pct = None
-        if size_gib is not None and free_gib is not None:
-            used_gib = round(size_gib - free_gib, 2)
-            if size_gib > 0:
-                used_pct = round((used_gib / size_gib) * 100, 1)
-        raw_raid = raidlevels.get(idx, "")
-        volumes.append({
-            "index":      idx,
-            "name":       names.get(idx, ""),
-            "fstype":     fstypes.get(idx, ""),
-            "raid_level": RAID_LEVEL_MAP.get(raw_raid, raw_raid),
-            "size_gib":   size_gib,
-            "free_gib":   free_gib,
-            "used_gib":   used_gib,
-            "used_pct":   used_pct,
-        })
-    return volumes
-
-
-async def fetch_snmp_data(data: dict, sensors: list) -> dict:
-    """Fetch all SNMP data. Returns dict keyed by sensor key.
-
-    Reuses a single SnmpEngine and UdpTransportTarget for all queries.
-    All scalar OIDs are fetched in parallel via asyncio.gather.
-    Disk and volume table columns are fetched in parallel as well.
-    """
-    imports = _get_snmp_imports()
-    (
-        SnmpEngine, ContextData, UdpTransportTarget, ObjectType,
-        ObjectIdentity, get_cmd, *_rest
-    ) = imports
-
-    host = sanitize_host(data["host"])
-    auth_data = _build_auth_data(imports, data)
-
+async def snmp_get_all(
+    host: str,
+    snmp_version: str,
+    community: str | None,
+    username: str | None,
+    auth_protocol: str | None,
+    auth_password: str | None,
+    priv_protocol: str | None,
+    priv_password: str | None,
+    oid_list: list[str],
+) -> dict[str, Any]:
+    """Fetch all scalar OIDs in parallel with asyncio.gather()."""
     try:
-        engine, target = await _make_engine_and_target(imports, host)
-    except Exception as err:
-        raise CannotConnect(f"Could not create SNMP transport: {err}") from err
+        from pysnmp.hlapi.v3arch.asyncio import SnmpEngine, UdpTransportTarget, ContextData
+    except ImportError as exc:
+        raise SnmpLibraryMissing("pysnmp is not installed") from exc
 
-    result: dict = {}
-    scalar_sensors = [s for s in sensors if not s.get("computed")]
+    engine = SnmpEngine()
+    try:
+        transport = await UdpTransportTarget.create(
+            (host, SNMP_PORT),
+            timeout=SNMP_TIMEOUT,
+            retries=SNMP_RETRIES,
+        )
+    except Exception as exc:
+        raise CannotConnect(f"Cannot connect to {host}") from exc
 
-    async def _fetch_one(sensor: dict):
-        oid = sensor["oid"]
-        key = sensor["key"]
-        transform = sensor.get("transform")
-        try:
-            error_indication, error_status, error_index, var_binds = await asyncio.wait_for(
-                get_cmd(
-                    engine, auth_data, target, ContextData(),
-                    ObjectType(ObjectIdentity(oid)),
-                ),
-                timeout=SNMP_TIMEOUT + 2,
-            )
-        except asyncio.TimeoutError:
-            _LOGGER.warning("Timeout fetching OID %s", oid)
-            return key, None
-        except Exception as err:
-            _LOGGER.warning("Exception fetching OID %s: %s", oid, err)
-            return key, None
+    if snmp_version == "SNMPv3":
+        if not username:
+            raise InvalidAuth("SNMPv3 requires a username")
+        auth_data = _build_v3_params(
+            username, auth_protocol or "MD5", auth_password or "",
+            priv_protocol or "DES", priv_password or "",
+        )
+    else:
+        auth_data = _build_v2c_params(community or "public")
 
-        if error_indication or error_status:
-            _LOGGER.warning(
-                "SNMP error for OID %s: %s %s", oid, error_indication, error_status
-            )
-            return key, None
+    tasks = [_snmp_get_one(engine, auth_data, transport, oid) for oid in oid_list]
+    results_list = await asyncio.gather(*tasks, return_exceptions=True)
 
-        raw_value = str(var_binds[0][1])
+    results: dict[str, Any] = {}
+    for oid, result in zip(oid_list, results_list):
+        if isinstance(result, Exception):
+            _LOGGER.debug("SNMP gather error for %s: %s", oid, result)
+            results[oid] = None
+        else:
+            results[oid] = result
 
-        if key == "system_uptime":
-            parsed = parse_snmp_number(raw_value)
-            return key, round(parsed / 100, 1) if parsed is not None else None
-        if "temperature" in key:
-            return key, parse_wd_temperature(raw_value)
-        if transform == "kb_to_mib":
-            parsed = parse_snmp_number(raw_value)
-            return key, round(parsed / 1024, 1) if parsed is not None else None
-        if transform == "fan_status_map":
-            from .const import FAN_STATUS_MAP
-            return key, FAN_STATUS_MAP.get(raw_value.strip(), raw_value)
-        parsed = parse_snmp_number(raw_value)
-        return key, parsed if parsed is not None else raw_value
+    return results
 
-    scalar_results = await asyncio.gather(*[_fetch_one(s) for s in scalar_sensors])
-    for key, value in scalar_results:
-        result[key] = value
 
-    ram_total = result.get("ram_total")
-    ram_free = result.get("ram_free")
-    if ram_total is not None and ram_free is not None:
-        result["ram_used"] = round(ram_total - ram_free, 1)
+async def snmp_walk(
+    host: str,
+    snmp_version: str,
+    community: str | None,
+    username: str | None,
+    auth_protocol: str | None,
+    auth_password: str | None,
+    priv_protocol: str | None,
+    priv_password: str | None,
+    base_oid: str,
+) -> list[tuple[str, Any]]:
+    """Perform an SNMP walk under base_oid and return (oid_str, value) pairs."""
+    try:
+        from pysnmp.hlapi.v3arch.asyncio import (
+            SnmpEngine, UdpTransportTarget, ContextData,
+            ObjectType, ObjectIdentity, bulk_walk_cmd,
+        )
+    except ImportError as exc:
+        raise SnmpLibraryMissing("pysnmp is not installed") from exc
 
-    disk_result, volume_result = await asyncio.gather(
-        fetch_disk_table(engine, auth_data, target, imports, data),
-        fetch_volume_table(engine, auth_data, target, imports, data),
-        return_exceptions=True,
+    engine = SnmpEngine()
+    try:
+        transport = await UdpTransportTarget.create(
+            (host, SNMP_PORT),
+            timeout=SNMP_TIMEOUT,
+            retries=SNMP_RETRIES,
+        )
+    except Exception as exc:
+        raise CannotConnect(f"Cannot connect to {host}") from exc
+
+    if snmp_version == "SNMPv3":
+        if not username:
+            raise InvalidAuth("SNMPv3 requires a username")
+        auth_data = _build_v3_params(
+            username, auth_protocol or "MD5", auth_password or "",
+            priv_protocol or "DES", priv_password or "",
+        )
+    else:
+        auth_data = _build_v2c_params(community or "public")
+
+    rows: list[tuple[str, Any]] = []
+    try:
+        async for error_indication, error_status, error_index, var_binds in bulk_walk_cmd(
+            engine,
+            auth_data,
+            transport,
+            ObjectType(ObjectIdentity(base_oid)),
+            lexicographicMode=False,
+        ):
+            if error_indication:
+                _LOGGER.debug("SNMP walk %s: %s", base_oid, error_indication)
+                break
+            if error_status:
+                _LOGGER.debug("SNMP walk %s error: %s", base_oid, error_status)
+                break
+            for var_bind in var_binds:
+                rows.append((str(var_bind[0]), var_bind[1]))
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.debug("SNMP walk exception for %s: %s", base_oid, exc)
+
+    return rows
+
+
+async def fetch_disk_table(
+    host: str, snmp_version: str, community: str | None,
+    username: str | None, auth_protocol: str | None, auth_password: str | None,
+    priv_protocol: str | None, priv_password: str | None,
+) -> list[dict[str, Any]]:
+    """Walk the WD disk table and return a list of disk dicts."""
+    from .const import (
+        WD_DISK_TABLE_ROOT, WD_DISK_COL_VENDOR, WD_DISK_COL_MODEL,
+        WD_DISK_COL_TEMPERATURE, WD_DISK_COL_CAPACITY, WD_DISK_COL_STATUS,
+        DISK_STATUS_MAP,
     )
 
-    if isinstance(disk_result, Exception):
-        _LOGGER.warning("Could not fetch WD disk table: %s", disk_result)
-        result["_disks"] = []
-    else:
-        result["_disks"] = disk_result
+    kwargs = dict(
+        host=host, snmp_version=snmp_version, community=community,
+        username=username, auth_protocol=auth_protocol, auth_password=auth_password,
+        priv_protocol=priv_protocol, priv_password=priv_password,
+    )
 
-    if isinstance(volume_result, Exception):
-        _LOGGER.warning("Could not fetch WD volume table: %s", volume_result)
-        result["_volumes"] = []
-    else:
-        result["_volumes"] = volume_result
+    rows = await snmp_walk(**kwargs, base_oid=WD_DISK_TABLE_ROOT)
 
+    # Group by row index (last OID component)
+    disks: dict[str, dict] = {}
+    for oid_str, value in rows:
+        parts = oid_str.split(".")
+        col_prefix = ".".join(parts[:-1])
+        idx = parts[-1]
+        disks.setdefault(idx, {})
+
+        raw = str(value)
+        if col_prefix.endswith(".10.1.2"):
+            disks[idx]["vendor"] = raw
+        elif col_prefix.endswith(".10.1.3"):
+            disks[idx]["model"] = raw
+        elif col_prefix.endswith(".10.1.5"):
+            try:
+                disks[idx]["temperature"] = float(raw)
+            except ValueError:
+                disks[idx]["temperature"] = None
+        elif col_prefix.endswith(".10.1.6"):
+            try:
+                disks[idx]["capacity_gb"] = round(int(raw) / 1000, 1)
+            except ValueError:
+                disks[idx]["capacity_gb"] = None
+        elif col_prefix.endswith(".10.1.7"):
+            disks[idx]["health"] = DISK_STATUS_MAP.get(raw, raw)
+
+    return [{
+        "index": idx,
+        "vendor": d.get("vendor", ""),
+        "model": d.get("model", ""),
+        "temperature": d.get("temperature"),
+        "capacity_gb": d.get("capacity_gb"),
+        "health": d.get("health", "Unknown"),
+    } for idx, d in sorted(disks.items())]
+
+
+async def fetch_volume_table(
+    host: str, snmp_version: str, community: str | None,
+    username: str | None, auth_protocol: str | None, auth_password: str | None,
+    priv_protocol: str | None, priv_password: str | None,
+) -> list[dict[str, Any]]:
+    """Walk the WD volume table and return a list of volume dicts."""
+    from .const import WD_VOL_TABLE_ROOT, WD_VOL_COL_NAME, RAID_LEVEL_MAP
+
+    kwargs = dict(
+        host=host, snmp_version=snmp_version, community=community,
+        username=username, auth_protocol=auth_protocol, auth_password=auth_password,
+        priv_protocol=priv_protocol, priv_password=priv_password,
+    )
+
+    rows = await snmp_walk(**kwargs, base_oid=WD_VOL_TABLE_ROOT)
+
+    volumes: dict[str, dict] = {}
+    for oid_str, value in rows:
+        parts = oid_str.split(".")
+        col_prefix = ".".join(parts[:-1])
+        idx = parts[-1]
+        volumes.setdefault(idx, {})
+
+        raw = str(value)
+        if col_prefix.endswith(".9.1.2"):
+            volumes[idx]["name"] = raw
+        elif col_prefix.endswith(".9.1.4"):
+            volumes[idx]["raid_level"] = RAID_LEVEL_MAP.get(raw, raw)
+        elif col_prefix.endswith(".9.1.5"):
+            try:
+                kb = int(raw)
+                volumes[idx]["total_gib"] = round(kb / 1024 / 1024, 2)
+            except ValueError:
+                volumes[idx]["total_gib"] = None
+        elif col_prefix.endswith(".9.1.6"):
+            try:
+                kb = int(raw)
+                free_gib = round(kb / 1024 / 1024, 2)
+                volumes[idx]["free_gib"] = free_gib
+            except ValueError:
+                volumes[idx]["free_gib"] = None
+
+    # Calculate derived fields
+    result = []
+    for idx, v in sorted(volumes.items()):
+        total = v.get("total_gib")
+        free = v.get("free_gib")
+        used = round(total - free, 2) if total is not None and free is not None else None
+        used_pct = round((used / total) * 100, 1) if total and used is not None else None
+        result.append({
+            "index": idx,
+            "name": v.get("name", f"Volume {idx}"),
+            "raid_level": v.get("raid_level", "Unknown"),
+            "total_gib": total,
+            "free_gib": free,
+            "used_gib": used,
+            "used_pct": used_pct,
+        })
     return result
