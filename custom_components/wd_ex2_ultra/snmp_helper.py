@@ -16,7 +16,7 @@ from .const import (
     CONF_SNMP_VERSION, CONF_COMMUNITY, CONF_USERNAME,
     CONF_AUTH_PROTOCOL, CONF_AUTH_PASSWORD,
     CONF_PRIV_PROTOCOL, CONF_PRIV_PASSWORD,
-    SNMP_VERSION_V2C,
+    SNMP_VERSION_V2C, RAID_LEVEL_MAP,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def _tf_hr_512b_blocks_to_gib(raw: str) -> float | None:
 
 def _tf_bps_to_mbit(raw: str) -> float | None:
     v = _safe_float(raw)
-    return round(v / 1_000_000, 0) if v is not None else None
+    return round(v / 1_000_000, 1) if v is not None else None
 
 
 def _tf_if_oper_status(raw: str) -> str:
@@ -121,22 +121,78 @@ def _tf_if_oper_status(raw: str) -> str:
     return IF_OPER_STATUS_MAP.get(str(raw).strip(), raw)
 
 
-def _tf_fan_status(raw: str) -> str:
-    from .const import FAN_STATUS_MAP
-    return FAN_STATUS_MAP.get(str(raw).strip(), raw)
+def _tf_fan_status_string(raw: str) -> str:
+    """Parse WD fan status string.
+
+    Raw value example: 'fan0: stop '
+    -> 'stop' in string means fan is stopped -> return 'Stopped'
+    -> anything else (running, spin up, ...) -> return 'Running'
+    """
+    s = str(raw).lower().strip()
+    if "stop" in s:
+        return "Stopped"
+    return "Running"
 
 
 def _tf_wd_temperature(raw: str) -> float | None:
-    """Parse 'Centigrade:48 Fahrenheit:118' -> 48.0."""
-    if not raw or not isinstance(raw, str):
+    """Parse 'Centigrade:48 Fahrenheit:118' or 'Centigrade:34' -> 48.0."""
+    if not raw:
         return None
-    m = re.search(r"Centigrade:\s*(\d+)", raw)
+    raw_s = str(raw)
+    m = re.search(r"[Cc]entigrade:\s*(\d+(?:\.\d+)?)", raw_s)
     if m:
         try:
             return float(m.group(1))
         except ValueError:
             pass
-    return _safe_float(raw)
+    return _safe_float(raw_s)
+
+
+def _tf_wd_size_string_to_gib(raw: str) -> float | None:
+    """Convert WD size strings to GiB.
+
+    Examples:
+      '3.6T'    -> 3.6 * 1024        = 3686.4  GiB
+      '974.4G'  -> 974.4             GiB
+      '500M'    -> 500 / 1024        GiB
+      '1.5TB'   -> 1.5 * 1024        GiB
+      '4000 GB.'-> 4000.0            GB  (used for display, not this fn)
+    """
+    if not raw:
+        return None
+    s = str(raw).strip()
+    # Match optional decimal number followed by optional space and unit
+    m = re.match(r"([\d.]+)\s*([TGMK]i?B?)", s, re.IGNORECASE)
+    if not m:
+        return _safe_float(s)
+    value = float(m.group(1))
+    unit  = m.group(2).upper().rstrip("B").rstrip("I")
+    if unit in ("T", "TB"):
+        return round(value * 1024, 2)
+    if unit in ("G", "GB"):
+        return round(value, 2)
+    if unit in ("M", "MB"):
+        return round(value / 1024, 2)
+    if unit in ("K", "KB"):
+        return round(value / 1024 / 1024, 2)
+    return round(value, 2)
+
+
+def _tf_wd_disk_capacity_gb(raw: str) -> float | None:
+    """Parse WD disk capacity string like '4000 GB.' -> 4000.0 (GB)."""
+    if not raw:
+        return None
+    # Strip everything except digits and decimal point
+    s = re.sub(r"[^\d.]", "", str(raw).strip())
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _tf_wd_raid_level_map(raw: str) -> str:
+    """Map RAID level integer string to human-readable label."""
+    return RAID_LEVEL_MAP.get(str(raw).strip(), str(raw).strip())
 
 
 _TRANSFORMS = {
@@ -145,8 +201,11 @@ _TRANSFORMS = {
     "hr_512b_blocks_to_gib": _tf_hr_512b_blocks_to_gib,
     "bps_to_mbit":           _tf_bps_to_mbit,
     "if_oper_status_map":    _tf_if_oper_status,
-    "fan_status_map":        _tf_fan_status,
+    "fan_status_string":     _tf_fan_status_string,
     "wd_temperature":        _tf_wd_temperature,
+    "wd_size_string_to_gib": _tf_wd_size_string_to_gib,
+    "wd_disk_capacity_gb":   _tf_wd_disk_capacity_gb,
+    "wd_raid_level_map":     _tf_wd_raid_level_map,
 }
 
 
@@ -279,7 +338,12 @@ async def walk_snmp_column(
 async def fetch_disk_table(
     engine: Any, auth_data: Any, target: Any, imports: tuple, _data: dict
 ) -> list[dict]:
-    """Fetch WD disk table. Capacity value is in MB -> convert to GB."""
+    """Fetch WD disk table.
+
+    Capacity raw value: '4000 GB.' -> parse to float GB, store as GB.
+    Temperature raw value: 'Centigrade:34' -> extract integer.
+    Status raw value: '0' -> map via DISK_STATUS_MAP.
+    """
     from .const import (
         WD_DISK_COL_NUM, WD_DISK_COL_VENDOR, WD_DISK_COL_MODEL,
         WD_DISK_COL_SERIAL, WD_DISK_COL_TEMPERATURE,
@@ -301,27 +365,28 @@ async def fetch_disk_table(
 
     disks = []
     for idx in sorted(indices, key=lambda x: int(x) if x.isdigit() else x):
-        raw_cap = _safe_float(caps.get(idx, ""))
+        # Capacity: '4000 GB.' -> 4000.0 GB (stored as GB, displayed as TB in sensor.py)
+        cap_gb = _tf_wd_disk_capacity_gb(caps.get(idx, ""))
         disks.append({
             "index":       idx,
             "vendor":      vendors.get(idx, ""),
             "model":       models.get(idx, ""),
             "serial":      serials.get(idx, ""),
             "temperature": _tf_wd_temperature(temps.get(idx, "")),
-            "capacity":    round(raw_cap / 1000, 2) if raw_cap is not None else None,
+            "capacity_gb": cap_gb,
             "status":      DISK_STATUS_MAP.get(statuses.get(idx, "0"), statuses.get(idx, "0")),
         })
     return disks
 
 
 # ---------------------------------------------------------------------------
-# Dynamic volume table
+# Dynamic volume table (walk - kept for completeness, not used for main sensors)
 # ---------------------------------------------------------------------------
 
 async def fetch_volume_table(
     engine: Any, auth_data: Any, target: Any, imports: tuple, _data: dict
 ) -> list[dict]:
-    """Fetch WD volume/RAID table. Size/free in KB -> convert to GiB."""
+    """Fetch WD volume/RAID table via walk (not used for main volume sensors)."""
     from .const import (
         WD_VOL_COL_NUM, WD_VOL_COL_NAME, WD_VOL_COL_FSTYPE,
         WD_VOL_COL_RAIDLEVEL, WD_VOL_COL_SIZE, WD_VOL_COL_FREESPACE,
@@ -342,19 +407,17 @@ async def fetch_volume_table(
 
     volumes = []
     for idx in sorted(indices, key=lambda x: int(x) if x.isdigit() else x):
-        raw_size = _safe_float(sizes.get(idx, ""))
-        raw_free = _safe_float(frees.get(idx, ""))
-        size_gib = round(raw_size / 1024 / 1024, 2) if raw_size is not None else None
-        free_gib = round(raw_free / 1024 / 1024, 2) if raw_free is not None else None
-        used_gib = round(size_gib - free_gib, 2) if (size_gib is not None and free_gib is not None) else None
-        used_pct = round(used_gib / size_gib * 100, 1) if (used_gib is not None and size_gib) else None
+        raw_size = _tf_wd_size_string_to_gib(sizes.get(idx, ""))
+        raw_free = _tf_wd_size_string_to_gib(frees.get(idx, ""))
+        used_gib = round(raw_size - raw_free, 2) if (raw_size is not None and raw_free is not None) else None
+        used_pct = round(used_gib / raw_size * 100, 1) if (used_gib is not None and raw_size) else None
         volumes.append({
             "index":      idx,
             "name":       names.get(idx, ""),
             "fstype":     fstypes.get(idx, ""),
             "raid_level": RAID_LEVEL_MAP.get(raids.get(idx, ""), raids.get(idx, "")),
-            "size_gib":   size_gib,
-            "free_gib":   free_gib,
+            "size_gib":   raw_size,
+            "free_gib":   raw_free,
             "used_gib":   used_gib,
             "used_pct":   used_pct,
         })
@@ -408,10 +471,21 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
         raw = str(var_binds[0][1])
         return key, _apply_transform(transform, raw)
 
-    # Fetch all scalar sensors in parallel
-    scalar_sensors = [s for s in sensors if not s.get("computed")]
+    # Fetch all scalar sensors that have an OID (skip computed)
+    scalar_sensors = [s for s in sensors if s.get("oid") and not s.get("computed")]
     results = await asyncio.gather(*[_fetch_one(s) for s in scalar_sensors])
     result: dict = {k: v for k, v in results}
+
+    # Compute derived WD volume values from already-fetched data
+    total_gib = result.get("volume_total_wd")
+    free_gib  = result.get("volume_free_wd")
+    if total_gib is not None and free_gib is not None:
+        used_gib = round(total_gib - free_gib, 2)
+        result["volume_used_wd"]         = used_gib
+        result["volume_used_percent_wd"] = round(used_gib / total_gib * 100, 1) if total_gib else None
+    else:
+        result["volume_used_wd"]         = None
+        result["volume_used_percent_wd"] = None
 
     # Dynamic tables in parallel
     disk_res, vol_res = await asyncio.gather(

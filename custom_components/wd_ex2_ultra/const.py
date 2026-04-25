@@ -34,17 +34,21 @@ DEFAULT_SCAN_INTERVAL = 60
 WD_NAS_AGENT = "1.3.6.1.4.1.5127.1.1.1.8.1"
 
 # Scalar WD OIDs
-WD_OID_SYSTEM_TEMP = WD_NAS_AGENT + ".7.0"   # mycloudex2ultraTemperature
-WD_OID_FAN_STATUS  = WD_NAS_AGENT + ".8.0"   # mycloudex2ultraFanStatus
+WD_OID_SYSTEM_TEMP    = WD_NAS_AGENT + ".7.0"    # mycloudex2ultraTemperature
+WD_OID_FAN_STATUS     = WD_NAS_AGENT + ".8.0"    # mycloudex2ultraFanStatus
+# WD Volume scalars (fixed index 1 = Volume 1)
+WD_OID_VOL_TOTAL      = WD_NAS_AGENT + ".9.1.5.1"  # e.g. "3.6T"
+WD_OID_VOL_FREE       = WD_NAS_AGENT + ".9.1.6.1"  # e.g. "974.4G"
+WD_OID_VOL_RAIDLEVEL  = WD_NAS_AGENT + ".9.1.4.1"  # e.g. "2" = RAID 1
 
 # WD Disk Table columns  (walk, no .0)
 WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"
 WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
 WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
 WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
-WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
-WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # MB -> GB (/1000)
-WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"
+WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"  # e.g. "Centigrade:34"
+WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # e.g. "4000 GB."
+WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"  # e.g. "0" = Normal
 
 DISK_STATUS_MAP = {
     "0": "Normal",
@@ -53,13 +57,13 @@ DISK_STATUS_MAP = {
     "3": "Failure",
 }
 
-# WD Volume Table columns  (walk, no .0)
+# WD Volume Table columns  (walk) - kept for RAID level walk if needed
 WD_VOL_COL_NUM       = WD_NAS_AGENT + ".9.1.1"
 WD_VOL_COL_NAME      = WD_NAS_AGENT + ".9.1.2"
 WD_VOL_COL_FSTYPE    = WD_NAS_AGENT + ".9.1.3"
 WD_VOL_COL_RAIDLEVEL = WD_NAS_AGENT + ".9.1.4"
-WD_VOL_COL_SIZE      = WD_NAS_AGENT + ".9.1.5"  # KB -> GiB
-WD_VOL_COL_FREESPACE = WD_NAS_AGENT + ".9.1.6"  # KB -> GiB
+WD_VOL_COL_SIZE      = WD_NAS_AGENT + ".9.1.5"
+WD_VOL_COL_FREESPACE = WD_NAS_AGENT + ".9.1.6"
 
 RAID_LEVEL_MAP = {
     "0": "JBOD",
@@ -67,11 +71,6 @@ RAID_LEVEL_MAP = {
     "2": "RAID 1",
     "3": "RAID 5",
     "4": "RAID 10",
-}
-
-FAN_STATUS_MAP = {
-    "0": "Normal",
-    "1": "Error",
 }
 
 IF_OPER_STATUS_MAP = {
@@ -101,6 +100,8 @@ HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"
 # Static SENSORS list
 # transform keys must match the _apply_transform() dispatcher
 # in snmp_helper.py.
+# "computed" entries have no OID; their value is calculated
+# inside fetch_snmp_data() after all OIDs are fetched.
 # ============================================================
 SENSORS = [
     # --- System ---
@@ -205,10 +206,10 @@ SENSORS = [
         "device_class": None,
         "state_class": "measurement",
     },
-    # --- Main volume /mnt/HD/HD_a2 (index 57, alloc_unit = 512 B) ---
+    # --- HR-MIB Main Volume /mnt/HD/HD_a2 (index 57, alloc_unit = 512 B) ---
     {
         "key": "volume_total",
-        "name": "Volume Total",
+        "name": "Volume Total (HR)",
         "oid": HR_STORAGE_SIZE + ".57",
         "unit": UnitOfInformation.GIBIBYTES,
         "icon": "mdi:nas",
@@ -218,13 +219,65 @@ SENSORS = [
     },
     {
         "key": "volume_used",
-        "name": "Volume Used",
+        "name": "Volume Used (HR)",
         "oid": HR_STORAGE_USED + ".57",
         "unit": UnitOfInformation.GIBIBYTES,
         "icon": "mdi:nas",
         "device_class": "data_size",
         "state_class": "measurement",
         "transform": "hr_512b_blocks_to_gib",
+    },
+    # --- WD Volume (fixed OID index 1, string values like '3.6T' / '974.4G') ---
+    {
+        "key": "volume_total_wd",
+        "name": "Volume Total Size",
+        "oid": WD_OID_VOL_TOTAL,
+        "unit": UnitOfInformation.GIBIBYTES,
+        "icon": "mdi:nas",
+        "device_class": "data_size",
+        "state_class": "measurement",
+        "transform": "wd_size_string_to_gib",
+    },
+    {
+        "key": "volume_free_wd",
+        "name": "Volume Free",
+        "oid": WD_OID_VOL_FREE,
+        "unit": UnitOfInformation.GIBIBYTES,
+        "icon": "mdi:nas",
+        "device_class": "data_size",
+        "state_class": "measurement",
+        "transform": "wd_size_string_to_gib",
+    },
+    {
+        "key": "volume_used_wd",
+        "name": "Volume Used",
+        "oid": None,
+        "unit": UnitOfInformation.GIBIBYTES,
+        "icon": "mdi:nas",
+        "device_class": "data_size",
+        "state_class": "measurement",
+        "computed": True,
+    },
+    {
+        "key": "volume_used_percent_wd",
+        "name": "Volume Used Percent",
+        "oid": None,
+        "unit": "%",
+        "icon": "mdi:chart-pie",
+        "device_class": None,
+        "state_class": "measurement",
+        "computed": True,
+    },
+    # --- WD Volume RAID Level ---
+    {
+        "key": "volume_raid_level",
+        "name": "Volume RAID Level",
+        "oid": WD_OID_VOL_RAIDLEVEL,
+        "unit": None,
+        "icon": "mdi:shield-half-full",
+        "device_class": None,
+        "state_class": None,
+        "transform": "wd_raid_level_map",
     },
     # --- Network (IF-MIB, interface index 2 = egiga0) ---
     {
@@ -292,7 +345,7 @@ SENSORS = [
         "device_class": None,
         "state_class": "total_increasing",
     },
-    # --- WD-specific ---
+    # --- WD-specific scalars ---
     {
         "key": "system_temperature",
         "name": "System Temperature",
@@ -311,6 +364,6 @@ SENSORS = [
         "icon": "mdi:fan",
         "device_class": None,
         "state_class": None,
-        "transform": "fan_status_map",
+        "transform": "fan_status_string",
     },
 ]

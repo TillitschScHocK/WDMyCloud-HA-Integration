@@ -44,13 +44,12 @@ async def async_setup_entry(
     """Set up WD EX2 Ultra sensors from config entry."""
     coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Static scalar sensors
+    # Static scalar sensors (includes computed WD volume sensors)
     async_add_entities(
         [WDEx2UltraSensor(coordinator, entry, s) for s in SENSORS]
     )
 
-    added_disks:   set[str] = set()
-    added_volumes: set[str] = set()
+    added_disks: set[str] = set()
 
     def _add_dynamic() -> None:
         if coordinator.data is None:
@@ -65,54 +64,47 @@ async def async_setup_entry(
             model = disk.get("model", "").strip()
             label = f"Disk {idx}" + (f" ({model})" if model else "")
             new += [
-                WDEx2UltraDiskSensor(coordinator, entry, idx, "temperature",
-                    name=f"{label} Temperature", unit="°C",
+                WDEx2UltraDiskSensor(
+                    coordinator, entry, idx, "temperature",
+                    name=f"{label} Temperature",
+                    unit="\u00b0C",
                     icon="mdi:thermometer",
                     device_class=SensorDeviceClass.TEMPERATURE,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraDiskSensor(coordinator, entry, idx, "capacity",
-                    name=f"{label} Capacity", unit=UnitOfInformation.GIGABYTES,
-                    icon="mdi:harddisk",
-                    device_class=SensorDeviceClass.DATA_SIZE,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraDiskSensor(coordinator, entry, idx, "status",
-                    name=f"{label} Health", unit=None,
-                    icon="mdi:harddisk", device_class=None, state_class=None),
-                WDEx2UltraDiskSensor(coordinator, entry, idx, "model",
-                    name=f"Disk {idx} Model", unit=None,
-                    icon="mdi:information-outline", device_class=None, state_class=None),
-                WDEx2UltraDiskSensor(coordinator, entry, idx, "vendor",
-                    name=f"Disk {idx} Vendor", unit=None,
-                    icon="mdi:information-outline", device_class=None, state_class=None),
+                    state_class=SensorStateClass.MEASUREMENT,
+                ),
+                # Capacity stored as GB, displayed as TB with conversion
+                WDEx2UltraDiskCapacitySensor(
+                    coordinator, entry, idx,
+                    name=f"{label} Capacity",
+                ),
+                WDEx2UltraDiskSensor(
+                    coordinator, entry, idx, "status",
+                    name=f"{label} Health",
+                    unit=None,
+                    icon="mdi:shield-check",
+                    device_class=None,
+                    state_class=None,
+                ),
+                WDEx2UltraDiskSensor(
+                    coordinator, entry, idx, "model",
+                    name=f"Disk {idx} Model",
+                    unit=None,
+                    icon="mdi:information-outline",
+                    device_class=None,
+                    state_class=None,
+                ),
+                WDEx2UltraDiskSensor(
+                    coordinator, entry, idx, "vendor",
+                    name=f"Disk {idx} Vendor",
+                    unit=None,
+                    icon="mdi:information-outline",
+                    device_class=None,
+                    state_class=None,
+                ),
             ]
 
-        for vol in coordinator.data.get("_volumes", []):
-            vidx = vol["index"]
-            if vidx in added_volumes:
-                continue
-            added_volumes.add(vidx)
-            vol_name = vol.get("name", "").strip() or f"Volume {vidx}"
-            new += [
-                WDEx2UltraVolumeSensor(coordinator, entry, vidx, "size_gib",
-                    name=f"{vol_name} Total Size", unit=UnitOfInformation.GIBIBYTES,
-                    icon="mdi:nas", device_class=SensorDeviceClass.DATA_SIZE,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraVolumeSensor(coordinator, entry, vidx, "free_gib",
-                    name=f"{vol_name} Free Space", unit=UnitOfInformation.GIBIBYTES,
-                    icon="mdi:nas", device_class=SensorDeviceClass.DATA_SIZE,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraVolumeSensor(coordinator, entry, vidx, "used_gib",
-                    name=f"{vol_name} Used Space", unit=UnitOfInformation.GIBIBYTES,
-                    icon="mdi:nas", device_class=SensorDeviceClass.DATA_SIZE,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraVolumeSensor(coordinator, entry, vidx, "used_pct",
-                    name=f"{vol_name} Used Percent", unit="%",
-                    icon="mdi:chart-pie", device_class=None,
-                    state_class=SensorStateClass.MEASUREMENT),
-                WDEx2UltraVolumeSensor(coordinator, entry, vidx, "raid_level",
-                    name=f"{vol_name} RAID Level", unit=None,
-                    icon="mdi:shield-half-full", device_class=None, state_class=None),
-            ]
+        # NOTE: WD volume sensors are now static (defined in SENSORS),
+        # so we do NOT create dynamic volume entities here.
 
         if new:
             async_add_entities(new)
@@ -126,7 +118,7 @@ async def async_setup_entry(
 # ---------------------------------------------------------------------------
 
 class WDEx2UltraSensor(CoordinatorEntity, SensorEntity):
-    """Static scalar sensor backed by a single OID."""
+    """Static scalar sensor backed by a single OID (or computed)."""
 
     def __init__(self, coordinator, entry: ConfigEntry, sensor_def: dict) -> None:
         super().__init__(coordinator)
@@ -180,31 +172,33 @@ class WDEx2UltraDiskSensor(CoordinatorEntity, SensorEntity):
         return None
 
 
-class WDEx2UltraVolumeSensor(CoordinatorEntity, SensorEntity):
-    """Dynamic sensor for one metric of one RAID volume."""
+class WDEx2UltraDiskCapacitySensor(CoordinatorEntity, SensorEntity):
+    """Disk capacity sensor: raw value in GB, displayed in TB."""
 
-    def __init__(self, coordinator, entry, volume_index, metric,
-                 name, unit, icon, device_class, state_class) -> None:
+    def __init__(self, coordinator, entry, disk_index, name) -> None:
         super().__init__(coordinator)
-        self._entry      = entry
-        self._vidx       = volume_index
-        self._metric     = metric
-        self._attr_unique_id                  = f"{entry.entry_id}_volume_{volume_index}_{metric}"
+        self._entry  = entry
+        self._idx    = disk_index
+        self._attr_unique_id                  = f"{entry.entry_id}_disk_{disk_index}_capacity"
         self._attr_name                       = name
-        self._attr_native_unit_of_measurement = unit
-        self._attr_icon                       = icon
-        self._attr_device_class               = device_class
-        self._attr_state_class                = state_class
+        self._attr_native_unit_of_measurement = UnitOfInformation.TERABYTES
+        self._attr_icon                       = "mdi:harddisk"
+        self._attr_device_class               = SensorDeviceClass.DATA_SIZE
+        self._attr_state_class                = SensorStateClass.MEASUREMENT
+        self._attr_suggested_display_precision = 2
 
     @property
     def device_info(self) -> DeviceInfo:
         return _device_info(self._entry)
 
     @property
-    def native_value(self) -> Any:
+    def native_value(self) -> float | None:
+        """Return capacity in TB (converted from GB)."""
         if self.coordinator.data is None:
             return None
-        for v in self.coordinator.data.get("_volumes", []):
-            if v["index"] == self._vidx:
-                return v.get(self._metric)
+        for d in self.coordinator.data.get("_disks", []):
+            if d["index"] == self._idx:
+                gb = d.get("capacity_gb")
+                if gb is not None:
+                    return round(gb / 1000, 2)
         return None
