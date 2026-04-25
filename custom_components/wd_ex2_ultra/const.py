@@ -29,51 +29,23 @@ DEFAULT_SCAN_INTERVAL = 60
 
 # ============================================================
 # WD MYCLOUDEX2ULTRA-MIB base OID
-<<<<<<< HEAD
-# 1.3.6.1.4.1.5127.1.1.1.8.1
-=======
 # enterprises(1.3.6.1.4.1) . WD(5127) . 1.1.1.8.1
->>>>>>> ec0ae21 (change config...)
 # ============================================================
 WD_NAS_AGENT = "1.3.6.1.4.1.5127.1.1.1.8.1"
 
 # Scalar WD OIDs
-<<<<<<< HEAD
-WD_OID_SYSTEM_TEMP = WD_NAS_AGENT + ".7.0"
-WD_OID_FAN_STATUS  = WD_NAS_AGENT + ".8.0"
-
-# WD Disk Table OID column roots (SNMP walk)
-WD_DISK_TABLE_ROOT      = WD_NAS_AGENT + ".10"
-=======
 WD_OID_SYSTEM_TEMP = WD_NAS_AGENT + ".7.0"   # mycloudex2ultraTemperature
 WD_OID_FAN_STATUS  = WD_NAS_AGENT + ".8.0"   # mycloudex2ultraFanStatus
 
 # WD Disk Table columns  (walk, no .0)
->>>>>>> ec0ae21 (change config...)
 WD_DISK_COL_NUM         = WD_NAS_AGENT + ".10.1.1"
 WD_DISK_COL_VENDOR      = WD_NAS_AGENT + ".10.1.2"
 WD_DISK_COL_MODEL       = WD_NAS_AGENT + ".10.1.3"
 WD_DISK_COL_SERIAL      = WD_NAS_AGENT + ".10.1.4"
 WD_DISK_COL_TEMPERATURE = WD_NAS_AGENT + ".10.1.5"
-<<<<<<< HEAD
-WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # in MB -> /1000 -> GB
+WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # MB -> GB (/1000)
 WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"
 
-# WD Volume Table OID column roots (SNMP walk)
-WD_VOL_TABLE_ROOT   = WD_NAS_AGENT + ".9"
-WD_VOL_COL_NUM      = WD_NAS_AGENT + ".9.1.1"
-WD_VOL_COL_NAME     = WD_NAS_AGENT + ".9.1.2"
-WD_VOL_COL_FSTYPE   = WD_NAS_AGENT + ".9.1.3"
-WD_VOL_COL_RAIDLEVEL = WD_NAS_AGENT + ".9.1.4"
-WD_VOL_COL_SIZE      = WD_NAS_AGENT + ".9.1.5"   # in KB -> /1024/1024 -> GiB
-WD_VOL_COL_FREESPACE = WD_NAS_AGENT + ".9.1.6"   # in KB -> /1024/1024 -> GiB
-
-# Lookup maps
-=======
-WD_DISK_COL_CAPACITY    = WD_NAS_AGENT + ".10.1.6"  # MB → GB (/1000)
-WD_DISK_COL_STATUS      = WD_NAS_AGENT + ".10.1.7"
-
->>>>>>> ec0ae21 (change config...)
 DISK_STATUS_MAP = {
     "0": "Normal",
     "1": "Good",
@@ -81,20 +53,13 @@ DISK_STATUS_MAP = {
     "3": "Failure",
 }
 
-<<<<<<< HEAD
-FAN_STATUS_MAP = {
-    "0": "Normal",
-    "1": "Error",
-}
-=======
 # WD Volume Table columns  (walk, no .0)
 WD_VOL_COL_NUM       = WD_NAS_AGENT + ".9.1.1"
 WD_VOL_COL_NAME      = WD_NAS_AGENT + ".9.1.2"
 WD_VOL_COL_FSTYPE    = WD_NAS_AGENT + ".9.1.3"
 WD_VOL_COL_RAIDLEVEL = WD_NAS_AGENT + ".9.1.4"
-WD_VOL_COL_SIZE      = WD_NAS_AGENT + ".9.1.5"  # KB → GiB
-WD_VOL_COL_FREESPACE = WD_NAS_AGENT + ".9.1.6"  # KB → GiB
->>>>>>> ec0ae21 (change config...)
+WD_VOL_COL_SIZE      = WD_NAS_AGENT + ".9.1.5"  # KB -> GiB
+WD_VOL_COL_FREESPACE = WD_NAS_AGENT + ".9.1.6"  # KB -> GiB
 
 RAID_LEVEL_MAP = {
     "0": "JBOD",
@@ -104,21 +69,6 @@ RAID_LEVEL_MAP = {
     "4": "RAID 10",
 }
 
-<<<<<<< HEAD
-IF_OPER_STATUS_MAP = {
-    1: "up",
-    2: "down",
-    3: "testing",
-    4: "unknown",
-    5: "dormant",
-    6: "notPresent",
-    7: "lowerLayerDown",
-}
-
-# ============================================================
-# Static scalar sensors (21 total)
-# transform key must match a function in snmp_helper.py
-=======
 FAN_STATUS_MAP = {
     "0": "Normal",
     "1": "Error",
@@ -137,21 +87,20 @@ IF_OPER_STATUS_MAP = {
 # ============================================================
 # HR-MIB  (HOST-RESOURCES-MIB)
 # hrStorage allocation units from live SNMP dump:
-#   index 1  (Physical memory)  = 1024 B  → *1024/1024/1024 = KiB → MiB
+#   index 1  (Physical memory)  = 1024 B  -> KiB -> MiB
 #   index 6  (Memory buffers)   = 1024 B
 #   index 7  (Cached memory)    = 1024 B
 #   index 10 (Swap space)       = 1024 B
-#   index 57 (/mnt/HD/HD_a2)    = 512 B   → *512/1024^3 = blocks → GiB
+#   index 57 (/mnt/HD/HD_a2)    = 512 B   -> blocks -> GiB
 # ============================================================
-HR_STORAGE_USED  = "1.3.6.1.2.1.25.2.3.1.6"
-HR_STORAGE_SIZE  = "1.3.6.1.2.1.25.2.3.1.5"
+HR_STORAGE_USED   = "1.3.6.1.2.1.25.2.3.1.6"
+HR_STORAGE_SIZE   = "1.3.6.1.2.1.25.2.3.1.5"
 HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"
 
 # ============================================================
 # Static SENSORS list
 # transform keys must match the _apply_transform() dispatcher
 # in snmp_helper.py.
->>>>>>> ec0ae21 (change config...)
 # ============================================================
 SENSORS = [
     # --- System ---
@@ -162,211 +111,8 @@ SENSORS = [
         "unit": UnitOfTime.SECONDS,
         "device_class": "duration",
         "state_class": "measurement",
-<<<<<<< HEAD
         "icon": "mdi:timer-outline",
         "transform": "timeticks_to_seconds",
-    },
-    # --- CPU (HR-MIB hrProcessorLoad) ---
-    {
-        "key": "cpu_core1",
-        "name": "CPU Core 1",
-        "oid": "1.3.6.1.2.1.25.3.3.1.2.196608",
-        "unit": "%",
-        "device_class": None,
-        "state_class": "measurement",
-        "icon": "mdi:cpu-64-bit",
-    },
-    {
-        "key": "cpu_core2",
-        "name": "CPU Core 2",
-        "oid": "1.3.6.1.2.1.25.3.3.1.2.196609",
-        "unit": "%",
-        "device_class": None,
-        "state_class": "measurement",
-        "icon": "mdi:cpu-64-bit",
-    },
-    # --- RAM (HR-MIB hrStorageTable, alloc_unit = 1024 bytes) ---
-    {
-        "key": "ram_total",
-        "name": "RAM Total",
-        "oid": "1.3.6.1.2.1.25.2.3.1.5.1",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:memory",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    {
-        "key": "ram_used",
-        "name": "RAM Used",
-        "oid": "1.3.6.1.2.1.25.2.3.1.6.1",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:memory",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    {
-        "key": "ram_cache",
-        "name": "RAM Cache",
-        "oid": "1.3.6.1.2.1.25.2.3.1.6.7",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:memory",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    {
-        "key": "ram_buffer",
-        "name": "RAM Buffer",
-        "oid": "1.3.6.1.2.1.25.2.3.1.6.6",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:memory",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    # --- Swap (HR-MIB hrStorageTable, alloc_unit = 1024 bytes) ---
-    {
-        "key": "swap_total",
-        "name": "Swap Total",
-        "oid": "1.3.6.1.2.1.25.2.3.1.5.10",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:harddisk",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    {
-        "key": "swap_used",
-        "name": "Swap Used",
-        "oid": "1.3.6.1.2.1.25.2.3.1.6.10",
-        "unit": UnitOfInformation.MEBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:harddisk",
-        "transform": "hrStorage_kb_to_mib",
-    },
-    # --- Processes ---
-    {
-        "key": "process_count",
-        "name": "Process Count",
-        "oid": "1.3.6.1.2.1.25.1.6.0",
-        "unit": None,
-        "device_class": None,
-        "state_class": "measurement",
-        "icon": "mdi:format-list-numbered",
-    },
-    # --- Main Volume Storage (HR-MIB index 57, alloc_unit = 512 bytes) ---
-    {
-        "key": "volume_total",
-        "name": "Volume Total",
-        "oid": "1.3.6.1.2.1.25.2.3.1.5.57",
-        "unit": UnitOfInformation.GIBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:harddisk",
-        "transform": "hrStorage_blocks_to_gib",
-    },
-    {
-        "key": "volume_used",
-        "name": "Volume Used",
-        "oid": "1.3.6.1.2.1.25.2.3.1.6.57",
-        "unit": UnitOfInformation.GIBIBYTES,
-        "device_class": "data_size",
-        "state_class": "measurement",
-        "icon": "mdi:harddisk",
-        "transform": "hrStorage_blocks_to_gib",
-    },
-    # --- Network (IF-MIB, interface index 2 = egiga0) ---
-    {
-        "key": "network_in",
-        "name": "Network In (egiga0)",
-        "oid": "1.3.6.1.2.1.31.1.1.1.6.2",
-        "unit": UnitOfInformation.BYTES,
-        "device_class": "data_size",
-        "state_class": "total_increasing",
-        "icon": "mdi:download-network",
-    },
-    {
-        "key": "network_out",
-        "name": "Network Out (egiga0)",
-        "oid": "1.3.6.1.2.1.31.1.1.1.10.2",
-        "unit": UnitOfInformation.BYTES,
-        "device_class": "data_size",
-        "state_class": "total_increasing",
-        "icon": "mdi:upload-network",
-    },
-    {
-        "key": "network_speed",
-        "name": "LAN Speed",
-        "oid": "1.3.6.1.2.1.2.2.1.5.2",
-        "unit": None,
-        "device_class": None,
-        "state_class": None,
-        "icon": "mdi:ethernet",
-        "transform": "bps_to_mbit",
-    },
-    {
-        "key": "network_status",
-        "name": "LAN Status",
-        "oid": "1.3.6.1.2.1.2.2.1.8.2",
-        "unit": None,
-        "device_class": None,
-        "state_class": None,
-        "icon": "mdi:lan",
-        "transform": "if_oper_status_map",
-    },
-    {
-        "key": "network_in_discards",
-        "name": "Network In Discards (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.13.2",
-        "unit": None,
-        "device_class": None,
-        "state_class": "total_increasing",
-        "icon": "mdi:alert-network",
-    },
-    {
-        "key": "network_in_errors",
-        "name": "Network In Errors (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.14.2",
-        "unit": None,
-        "device_class": None,
-        "state_class": "total_increasing",
-        "icon": "mdi:network-off",
-    },
-    {
-        "key": "network_out_errors",
-        "name": "Network Out Errors (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.20.2",
-        "unit": None,
-        "device_class": None,
-        "state_class": "total_increasing",
-        "icon": "mdi:network-off",
-    },
-    # --- WD-specific scalars ---
-    {
-        "key": "system_temperature",
-        "name": "System Temperature",
-        "oid": WD_OID_SYSTEM_TEMP,
-        "unit": UnitOfTemperature.CELSIUS,
-        "device_class": "temperature",
-        "state_class": "measurement",
-        "icon": "mdi:thermometer",
-        "transform": "parse_wd_temperature",
-    },
-    {
-        "key": "fan_status",
-        "name": "Fan Status",
-        "oid": WD_OID_FAN_STATUS,
-        "unit": None,
-        "device_class": None,
-        "state_class": None,
-        "icon": "mdi:fan",
-        "transform": "fan_status_map",
-=======
-        "transform": "timeticks_to_seconds",
->>>>>>> ec0ae21 (change config...)
     },
     # --- CPU (hrProcessorLoad) ---
     {
@@ -484,7 +230,7 @@ SENSORS = [
     {
         "key": "network_in",
         "name": "Network In (egiga0)",
-        "oid": "1.3.6.1.2.1.31.1.1.1.6.2",   # ifHCInOctets.2  (64-bit)
+        "oid": "1.3.6.1.2.1.31.1.1.1.6.2",
         "unit": UnitOfInformation.BYTES,
         "icon": "mdi:download-network",
         "device_class": "data_size",
@@ -493,7 +239,7 @@ SENSORS = [
     {
         "key": "network_out",
         "name": "Network Out (egiga0)",
-        "oid": "1.3.6.1.2.1.31.1.1.1.10.2",  # ifHCOutOctets.2  (64-bit)
+        "oid": "1.3.6.1.2.1.31.1.1.1.10.2",
         "unit": UnitOfInformation.BYTES,
         "icon": "mdi:upload-network",
         "device_class": "data_size",
@@ -502,7 +248,7 @@ SENSORS = [
     {
         "key": "network_speed",
         "name": "LAN Speed",
-        "oid": "1.3.6.1.2.1.2.2.1.5.2",       # ifSpeed.2
+        "oid": "1.3.6.1.2.1.2.2.1.5.2",
         "unit": "Mbit/s",
         "icon": "mdi:ethernet",
         "device_class": None,
@@ -512,7 +258,7 @@ SENSORS = [
     {
         "key": "network_status",
         "name": "LAN Status",
-        "oid": "1.3.6.1.2.1.2.2.1.8.2",       # ifOperStatus.2
+        "oid": "1.3.6.1.2.1.2.2.1.8.2",
         "unit": None,
         "icon": "mdi:lan",
         "device_class": None,
@@ -522,7 +268,7 @@ SENSORS = [
     {
         "key": "network_in_discards",
         "name": "Network In Discards (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.13.2",      # ifInDiscards.2
+        "oid": "1.3.6.1.2.1.2.2.1.13.2",
         "unit": None,
         "icon": "mdi:alert-network",
         "device_class": None,
@@ -531,7 +277,7 @@ SENSORS = [
     {
         "key": "network_in_errors",
         "name": "Network In Errors (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.14.2",      # ifInErrors.2
+        "oid": "1.3.6.1.2.1.2.2.1.14.2",
         "unit": None,
         "icon": "mdi:network-off",
         "device_class": None,
@@ -540,7 +286,7 @@ SENSORS = [
     {
         "key": "network_out_errors",
         "name": "Network Out Errors (egiga0)",
-        "oid": "1.3.6.1.2.1.2.2.1.20.2",      # ifOutErrors.2
+        "oid": "1.3.6.1.2.1.2.2.1.20.2",
         "unit": None,
         "icon": "mdi:network-off",
         "device_class": None,
