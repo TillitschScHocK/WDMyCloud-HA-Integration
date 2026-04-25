@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+<<<<<<< HEAD
 from .const import (
     DOMAIN,
     DEFAULT_SCAN_INTERVAL,
@@ -33,12 +34,17 @@ from .snmp_helper import (
     InvalidAuth,
     TRANSFORMS,
 )
+=======
+from .const import DOMAIN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, SENSORS
+from .snmp_helper import fetch_snmp_data, CannotConnect, SnmpLibraryMissing
+>>>>>>> ec0ae21 (change config...)
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+<<<<<<< HEAD
     """Set up WD MyCloud EX2 Ultra from a config entry."""
     host = entry.data[CONF_HOST]
     snmp_version = entry.data[CONF_SNMP_VERSION]
@@ -49,6 +55,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     priv_protocol = entry.data.get(CONF_PRIV_PROTOCOL)
     priv_password = entry.data.get(CONF_PRIV_PASSWORD)
     scan_interval = entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+=======
+    """Set up WD EX2 Ultra from a config entry."""
+    scan_interval = entry.options.get(
+        CONF_SCAN_INTERVAL,
+        entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+    )
+>>>>>>> ec0ae21 (change config...)
 
     oid_list = [s["oid"] for s in SENSORS if s.get("oid")]
 
@@ -115,16 +128,58 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as exc:
         raise ConfigEntryNotReady(f"Unable to connect to {host}: {exc}") from exc
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+<<<<<<< HEAD
     return True
 
 
+=======
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload entry when options are updated."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+>>>>>>> ec0ae21 (change config...)
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)
     return unload_ok
+<<<<<<< HEAD
+=======
+
+
+class WDEx2UltraCoordinator(DataUpdateCoordinator):
+    """Coordinator that polls the WD EX2 Ultra via SNMP."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        update_interval: timedelta,
+    ) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=update_interval,
+        )
+        self.entry = entry
+
+    async def _async_update_data(self) -> dict:
+        try:
+            return await fetch_snmp_data(dict(self.entry.data), SENSORS)
+        except (CannotConnect, SnmpLibraryMissing) as err:
+            raise UpdateFailed(f"SNMP update failed: {err}") from err
+        except Exception as err:
+            _LOGGER.exception("Unexpected error during SNMP update")
+            raise UpdateFailed(f"Unexpected SNMP error: {err}") from err
+>>>>>>> ec0ae21 (change config...)
