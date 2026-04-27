@@ -11,7 +11,7 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, SENSORS
-from .snmp_helper import fetch_snmp_data, CannotConnect, SnmpLibraryMissing
+from .snmp_helper import fetch_snmp_data, CannotConnect, SnmpLibraryMissing, _get_snmp_imports
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR]
@@ -24,9 +24,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
     )
 
+    # Validate pysnmp availability early and cache imports once.
+    try:
+        imports = _get_snmp_imports()
+    except SnmpLibraryMissing as err:
+        raise ConfigEntryNotReady(f"pysnmp not available: {err}") from err
+
+    # Create a single shared SnmpEngine for this config entry.
+    # Reusing it across update cycles avoids repeated resource allocation.
+    SnmpEngine = imports[0]
+    shared_engine = SnmpEngine()
+
     async def _async_update_data() -> dict:
         try:
-            return await fetch_snmp_data(dict(entry.data), SENSORS)
+            return await fetch_snmp_data(dict(entry.data), SENSORS, engine=shared_engine)
         except (CannotConnect, SnmpLibraryMissing) as err:
             raise UpdateFailed(f"SNMP update failed: {err}") from err
         except Exception as err:
