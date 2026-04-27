@@ -26,6 +26,10 @@ SNMP_RETRIES      = 1
 SNMP_PORT         = 161
 MAX_WALK_ITERS    = 100
 
+# Max simultaneous SNMP GET requests per update cycle.
+# Keeps the WD NAS SNMP daemon from being overwhelmed.
+SNMP_CONCURRENCY  = 5
+
 
 # ---------------------------------------------------------------------------
 # Custom exceptions
@@ -42,10 +46,16 @@ class SnmpLibraryMissing(HomeAssistantError):
 
 
 # ---------------------------------------------------------------------------
-# pysnmp lazy import
+# pysnmp cached import – resolved once at module level on first call
 # ---------------------------------------------------------------------------
 
-def _get_snmp_imports():
+_SNMP_IMPORTS: tuple | None = None
+
+
+def _get_snmp_imports() -> tuple:
+    global _SNMP_IMPORTS
+    if _SNMP_IMPORTS is not None:
+        return _SNMP_IMPORTS
     try:
         from pysnmp.hlapi.v3arch.asyncio import (
             SnmpEngine, ContextData, UdpTransportTarget,
@@ -55,7 +65,7 @@ def _get_snmp_imports():
             usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
             usmDESPrivProtocol, usmAesCfb128Protocol,
         )
-        return (
+        _SNMP_IMPORTS = (
             SnmpEngine, ContextData, UdpTransportTarget,
             ObjectType, ObjectIdentity,
             get_cmd, next_cmd,
@@ -63,6 +73,7 @@ def _get_snmp_imports():
             usmHMACMD5AuthProtocol, usmHMACSHAAuthProtocol,
             usmDESPrivProtocol, usmAesCfb128Protocol,
         )
+        return _SNMP_IMPORTS
     except ImportError as err:
         raise SnmpLibraryMissing(
             "pysnmp 7.1.22 is not installed. Restart Home Assistant after HACS installation."
@@ -161,7 +172,6 @@ def _tf_wd_size_string_to_gib(raw: str) -> float | None:
     if not raw:
         return None
     s = str(raw).strip()
-    # Match optional decimal number followed by optional space and unit
     m = re.match(r"([\d.]+)\s*([TGMK]i?B?)", s, re.IGNORECASE)
     if not m:
         return _safe_float(s)
@@ -182,7 +192,6 @@ def _tf_wd_disk_capacity_gb(raw: str) -> float | None:
     """Parse WD disk capacity string like '4000 GB.' -> 4000.0 (GB)."""
     if not raw:
         return None
-    # Strip everything except digits and decimal point
     s = re.sub(r"[^\d.]", "", str(raw).strip())
     try:
         return float(s)
@@ -248,12 +257,12 @@ def _build_auth_data(imports: tuple, data: dict) -> Any:
     )
 
 
-async def _make_engine_and_target(imports: tuple, host: str) -> tuple:
-    SnmpEngine, ContextData, UdpTransportTarget, *_ = imports
-    target = await UdpTransportTarget.create(
+async def _make_target(imports: tuple, host: str) -> Any:
+    """Create a UdpTransportTarget; engine is passed in from outside."""
+    _, _, UdpTransportTarget, *_ = imports
+    return await UdpTransportTarget.create(
         (host, SNMP_PORT), timeout=SNMP_TIMEOUT, retries=SNMP_RETRIES
     )
-    return SnmpEngine(), target
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +278,8 @@ async def test_snmp_connection(data: dict) -> None:
     auth_data = _build_auth_data(imports, data)
 
     try:
-        engine, target = await _make_engine_and_target(imports, host)
+        engine = SnmpEngine()
+        target = await _make_target(imports, host)
         err_ind, err_status, _, _ = await asyncio.wait_for(
             get_cmd(
                 engine, auth_data, target, ContextData(),
@@ -365,7 +375,6 @@ async def fetch_disk_table(
 
     disks = []
     for idx in sorted(indices, key=lambda x: int(x) if x.isdigit() else x):
-        # Capacity: '4000 GB.' -> 4000.0 GB (stored as GB, displayed as TB in sensor.py)
         cap_gb = _tf_wd_disk_capacity_gb(caps.get(idx, ""))
         disks.append({
             "index":       idx,
@@ -380,59 +389,16 @@ async def fetch_disk_table(
 
 
 # ---------------------------------------------------------------------------
-# Dynamic volume table (walk - kept for completeness, not used for main sensors)
-# ---------------------------------------------------------------------------
-
-async def fetch_volume_table(
-    engine: Any, auth_data: Any, target: Any, imports: tuple, _data: dict
-) -> list[dict]:
-    """Fetch WD volume/RAID table via walk (not used for main volume sensors)."""
-    from .const import (
-        WD_VOL_COL_NUM, WD_VOL_COL_NAME, WD_VOL_COL_FSTYPE,
-        WD_VOL_COL_RAIDLEVEL, WD_VOL_COL_SIZE, WD_VOL_COL_FREESPACE,
-        RAID_LEVEL_MAP,
-    )
-
-    indices = await walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_NUM)
-    if not indices:
-        return []
-
-    names, fstypes, raids, sizes, frees = await asyncio.gather(
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_NAME),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_FSTYPE),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_RAIDLEVEL),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_SIZE),
-        walk_snmp_column(engine, auth_data, target, imports, WD_VOL_COL_FREESPACE),
-    )
-
-    volumes = []
-    for idx in sorted(indices, key=lambda x: int(x) if x.isdigit() else x):
-        raw_size = _tf_wd_size_string_to_gib(sizes.get(idx, ""))
-        raw_free = _tf_wd_size_string_to_gib(frees.get(idx, ""))
-        used_gib = round(raw_size - raw_free, 2) if (raw_size is not None and raw_free is not None) else None
-        used_pct = round(used_gib / raw_size * 100, 1) if (used_gib is not None and raw_size) else None
-        volumes.append({
-            "index":      idx,
-            "name":       names.get(idx, ""),
-            "fstype":     fstypes.get(idx, ""),
-            "raid_level": RAID_LEVEL_MAP.get(raids.get(idx, ""), raids.get(idx, "")),
-            "size_gib":   raw_size,
-            "free_gib":   raw_free,
-            "used_gib":   used_gib,
-            "used_pct":   used_pct,
-        })
-    return volumes
-
-
-# ---------------------------------------------------------------------------
 # Main fetch entry point
 # ---------------------------------------------------------------------------
 
-async def fetch_snmp_data(data: dict, sensors: list) -> dict:
-    """Fetch all SNMP data in parallel; return dict keyed by sensor key.
+async def fetch_snmp_data(data: dict, sensors: list, engine: Any = None) -> dict:
+    """Fetch all SNMP data; return dict keyed by sensor key.
 
-    One SnmpEngine + UdpTransportTarget is reused for every query in this
-    update cycle to minimise overhead.
+    A shared SnmpEngine can be passed in from the coordinator to be reused
+    across update cycles and avoid resource leaks.
+    Scalar GET requests are throttled to SNMP_CONCURRENCY simultaneous
+    requests to avoid overwhelming the WD NAS SNMP daemon.
     """
     imports = _get_snmp_imports()
     SnmpEngine, ContextData, UdpTransportTarget, ObjectType, ObjectIdentity, get_cmd, *_ = imports
@@ -440,29 +406,37 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
     host      = sanitize_host(data["host"])
     auth_data = _build_auth_data(imports, data)
 
+    # Use provided engine or create a temporary one
+    _own_engine = engine is None
+    if _own_engine:
+        engine = SnmpEngine()
+
     try:
-        engine, target = await _make_engine_and_target(imports, host)
+        target = await _make_target(imports, host)
     except Exception as exc:
         raise CannotConnect(f"Could not create SNMP transport: {exc}") from exc
+
+    semaphore = asyncio.Semaphore(SNMP_CONCURRENCY)
 
     async def _fetch_one(sensor: dict) -> tuple[str, Any]:
         oid       = sensor["oid"]
         key       = sensor["key"]
         transform = sensor.get("transform")
-        try:
-            err_ind, err_status, _, var_binds = await asyncio.wait_for(
-                get_cmd(
-                    engine, auth_data, target, ContextData(),
-                    ObjectType(ObjectIdentity(oid)),
-                ),
-                timeout=SNMP_TIMEOUT + 2,
-            )
-        except asyncio.TimeoutError:
-            _LOGGER.warning("Timeout fetching OID %s (%s)", oid, key)
-            return key, None
-        except Exception as exc:
-            _LOGGER.warning("Exception fetching OID %s (%s): %s", oid, key, exc)
-            return key, None
+        async with semaphore:
+            try:
+                err_ind, err_status, _, var_binds = await asyncio.wait_for(
+                    get_cmd(
+                        engine, auth_data, target, ContextData(),
+                        ObjectType(ObjectIdentity(oid)),
+                    ),
+                    timeout=SNMP_TIMEOUT + 2,
+                )
+            except asyncio.TimeoutError:
+                _LOGGER.warning("Timeout fetching OID %s (%s)", oid, key)
+                return key, None
+            except Exception as exc:
+                _LOGGER.warning("Exception fetching OID %s (%s): %s", oid, key, exc)
+                return key, None
 
         if err_ind or err_status:
             _LOGGER.warning("SNMP error for OID %s (%s): %s %s", oid, key, err_ind, err_status)
@@ -487,19 +461,13 @@ async def fetch_snmp_data(data: dict, sensors: list) -> dict:
         result["volume_used_wd"]         = None
         result["volume_used_percent_wd"] = None
 
-    # Dynamic tables in parallel
-    disk_res, vol_res = await asyncio.gather(
-        fetch_disk_table(engine, auth_data, target, imports, data),
-        fetch_volume_table(engine, auth_data, target, imports, data),
-        return_exceptions=True,
-    )
+    # Fetch disk table (volume walk removed – unused and wastes SNMP resources)
+    try:
+        result["_disks"] = await fetch_disk_table(engine, auth_data, target, imports, data)
+    except Exception as exc:
+        _LOGGER.warning("Disk table fetch failed: %s", exc)
+        result["_disks"] = []
 
-    result["_disks"]   = [] if isinstance(disk_res, Exception) else disk_res
-    result["_volumes"] = [] if isinstance(vol_res, Exception) else vol_res
-
-    if isinstance(disk_res, Exception):
-        _LOGGER.warning("Disk table fetch failed: %s", disk_res)
-    if isinstance(vol_res, Exception):
-        _LOGGER.warning("Volume table fetch failed: %s", vol_res)
+    result["_volumes"] = []
 
     return result
