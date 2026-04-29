@@ -7,7 +7,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.config_entries import ConfigFlowResult
 
 from .const import (
     DOMAIN,
@@ -49,7 +49,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Step 1: Select SNMP version."""
         if user_input is not None:
             self._snmp_version = user_input[CONF_SNMP_VERSION]
@@ -68,7 +68,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_v2c(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Step 2a: SNMPv2c credentials."""
         errors: dict[str, str] = {}
 
@@ -110,7 +110,7 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_v3(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Step 2b: SNMPv3 credentials."""
         errors: dict[str, str] = {}
 
@@ -168,7 +168,7 @@ class WDEx2UltraOptionsFlow(config_entries.OptionsFlow):
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)

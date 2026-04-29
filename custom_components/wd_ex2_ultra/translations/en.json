@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "WD MyCloud EX2 Ultra",
+        "description": "Select the SNMP version used by your device.",
+        "data": {
+          "snmp_version": "SNMP Version"
+        }
+      },
+      "v2c": {
+        "title": "SNMPv2c Configuration",
+        "description": "Enter the connection details for your WD device.",
+        "data": {
+          "host": "Host / IP Address",
+          "community": "Community String",
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      },
+      "v3": {
+        "title": "SNMPv3 Configuration",
+        "description": "Enter the SNMPv3 credentials for your WD device.",
+        "data": {
+          "host": "Host / IP Address",
+          "username": "Username",
+          "auth_protocol": "Authentication Protocol",
+          "auth_password": "Authentication Password",
+          "priv_protocol": "Privacy Protocol",
+          "priv_password": "Privacy Password",
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the device. Check the host and SNMP settings.",
+      "invalid_auth": "Authentication failed. Check your credentials.",
+      "snmp_library_missing": "The required SNMP library (pysnmp) is not installed.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "WD MyCloud EX2 Ultra Options",
+        "data": {
+          "scan_interval": "Scan Interval (seconds)"
+        }
+      }
+    }
+  }
+}
