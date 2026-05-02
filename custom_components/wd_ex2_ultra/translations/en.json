@@ -2,40 +2,40 @@
   "config": {
     "step": {
       "user": {
-        "title": "WD MyCloud EX2 Ultra",
-        "description": "Select the SNMP version used by your device.",
+        "title": "WD MyCloud EX2 Ultra \u2013 SNMP Version",
+        "description": "Select the SNMP version your NAS is configured for.",
         "data": {
           "snmp_version": "SNMP Version"
         }
       },
       "v2c": {
-        "title": "SNMPv2c Configuration",
-        "description": "Enter the connection details for your WD device.",
+        "title": "WD MyCloud EX2 Ultra \u2013 SNMPv2c Settings",
+        "description": "Enter the IP address or hostname of your NAS (e.g. 192.168.1.100). Do not include http://.",
         "data": {
-          "host": "Host / IP Address",
+          "host": "IP Address / Hostname",
           "community": "Community String",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Polling Interval (seconds)"
         }
       },
       "v3": {
-        "title": "SNMPv3 Configuration",
-        "description": "Enter the SNMPv3 credentials for your WD device.",
+        "title": "WD MyCloud EX2 Ultra \u2013 SNMPv3 Settings",
+        "description": "Enter the IP address or hostname of your NAS (e.g. 192.168.1.100). Do not include http://.",
         "data": {
-          "host": "Host / IP Address",
-          "username": "Username",
+          "host": "IP Address / Hostname",
+          "username": "SNMP Username",
           "auth_protocol": "Authentication Protocol",
           "auth_password": "Authentication Password",
           "priv_protocol": "Privacy Protocol",
           "priv_password": "Privacy Password",
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Polling Interval (seconds)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Unable to connect to the device. Check the host and SNMP settings.",
-      "invalid_auth": "Authentication failed. Check your credentials.",
-      "snmp_library_missing": "The required SNMP library (pysnmp) is not installed.",
-      "unknown": "An unexpected error occurred."
+      "cannot_connect": "Failed to connect. Please check the IP address and ensure SNMP is enabled on your NAS.",
+      "invalid_auth": "Authentication failed. Please verify your SNMP credentials.",
+      "snmp_library_missing": "The pysnmp library is missing. Please restart Home Assistant after installing the integration.",
+      "unknown": "An unexpected error occurred. Please check the Home Assistant logs for details."
     },
     "abort": {
       "already_configured": "This device is already configured."
@@ -44,9 +44,10 @@
   "options": {
     "step": {
       "init": {
-        "title": "WD MyCloud EX2 Ultra Options",
+        "title": "WD MyCloud EX2 Ultra \u2013 Options",
+        "description": "Adjust the polling interval for your NAS.",
         "data": {
-          "scan_interval": "Scan Interval (seconds)"
+          "scan_interval": "Polling Interval (seconds)"
         }
       }
     }

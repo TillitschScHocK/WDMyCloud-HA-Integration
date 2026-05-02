@@ -47,6 +47,14 @@ class WDEx2UltraConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Initialize config flow."""
         self._snmp_version: str | None = None
 
+    @staticmethod
+    @config_entries.callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> WDEx2UltraOptionsFlow:
+        """Get the options flow for this handler."""
+        return WDEx2UltraOptionsFlow(config_entry)
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -186,9 +194,3 @@ class WDEx2UltraOptionsFlow(config_entries.OptionsFlow):
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)
-
-
-# Register the options flow
-WDEx2UltraConfigFlow.async_get_options_flow = staticmethod(
-    lambda config_entry: WDEx2UltraOptionsFlow(config_entry)
-)
